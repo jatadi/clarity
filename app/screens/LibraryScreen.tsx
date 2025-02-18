@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, FlatList, StyleSheet, Text, TouchableOpacity } from 'react-native';
+import { View, FlatList, StyleSheet, Text, TouchableOpacity, Alert } from 'react-native';
 import { Audio } from 'expo-av';
 import * as FileSystem from 'expo-file-system';
 import { useFocusEffect } from '@react-navigation/native';
+import { Ionicons } from '@expo/vector-icons';
+import { deleteRecording } from '../database/Database';
 
 type Recording = {
   id: string;
@@ -74,19 +76,54 @@ export default function LibraryScreen() {
     }
   };
 
+  const handleDelete = (recording: Recording) => {
+    Alert.alert(
+      'Delete Recording',
+      'Are you sure you want to delete this recording?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteRecording(recording.id);
+              loadRecordings(); // Refresh the list
+            } catch (error) {
+              console.error('Failed to delete recording:', error);
+              Alert.alert('Error', 'Failed to delete recording');
+            }
+          }
+        }
+      ]
+    );
+  };
+
   const renderItem = ({ item }: { item: Recording }) => (
-    <TouchableOpacity 
-      style={styles.recordingItem}
-      onPress={() => handlePlay(item)}
-    >
-      <Text style={styles.filename}>{item.filename}</Text>
-      <Text style={styles.date}>
-        {new Date(item.created_at).toLocaleDateString()}
-      </Text>
-      <Text style={styles.playStatus}>
-        {playingId === item.id ? 'Playing...' : 'Tap to play'}
-      </Text>
-    </TouchableOpacity>
+    <View style={styles.recordingItem}>
+      <TouchableOpacity 
+        style={styles.recordingContent}
+        onPress={() => handlePlay(item)}
+      >
+        <Text style={styles.filename}>{item.filename}</Text>
+        <Text style={styles.date}>
+          {new Date(item.created_at).toLocaleDateString()}
+        </Text>
+        <Text style={styles.playStatus}>
+          {playingId === item.id ? 'Playing...' : 'Tap to play'}
+        </Text>
+      </TouchableOpacity>
+      
+      <TouchableOpacity
+        style={styles.deleteButton}
+        onPress={() => handleDelete(item)}
+      >
+        <Ionicons name="trash-outline" size={24} color="red" />
+      </TouchableOpacity>
+    </View>
   );
 
   return (
@@ -109,9 +146,14 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   recordingItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
     padding: 15,
     borderBottomWidth: 1,
     borderBottomColor: '#eee',
+  },
+  recordingContent: {
+    flex: 1,
   },
   filename: {
     fontSize: 16,
@@ -126,6 +168,9 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#007AFF',
     marginTop: 4,
+  },
+  deleteButton: {
+    padding: 10,
   },
   emptyText: {
     textAlign: 'center',

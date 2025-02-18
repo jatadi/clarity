@@ -3,6 +3,7 @@ import { View, Button, StyleSheet, Text, TextInput, Modal } from 'react-native';
 import { Audio } from 'expo-av';
 import { AudioRecorder } from '../services/AudioRecorder';
 import * as FileSystem from 'expo-file-system';
+import TranscriptionView from '../components/TranscriptionView';
 
 export default function RecordingScreen() {
   const [isRecording, setIsRecording] = useState(false);
@@ -87,16 +88,20 @@ export default function RecordingScreen() {
       />
       
       {tempRecordingUri && (
-        <View style={styles.buttonContainer}>
-          <Button
-            title="Play Recording"
-            onPress={handlePlay}
-          />
-          <Button
-            title="Save Recording"
-            onPress={() => setShowSaveModal(true)}
-          />
-        </View>
+        <>
+          <View style={styles.buttonContainer}>
+            <Button
+              title="Play Recording"
+              onPress={handlePlay}
+            />
+            <Button
+              title="Save Recording"
+              onPress={() => setShowSaveModal(true)}
+            />
+          </View>
+          
+          <TranscriptionView audioUri={tempRecordingUri} />
+        </>
       )}
 
       <Modal
@@ -137,9 +142,8 @@ export default function RecordingScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
     padding: 20,
+    alignItems: 'center',
   },
   buttonContainer: {
     marginTop: 20,
