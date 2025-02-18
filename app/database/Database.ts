@@ -101,4 +101,37 @@ export const deleteRecording = async (id: string) => {
     console.error('Delete error:', error);
     throw error;
   }
+};
+
+export const getRecordings = async () => {
+  try {
+    // Get filepath first
+    const filePaths = await FileSystem.readDirectoryAsync(
+      FileSystem.documentDirectory || ''
+    );
+    
+    const audioFiles = filePaths.filter(file => file.endsWith('.m4a'));
+    
+    return audioFiles.map(filename => ({
+      id: filename,
+      filename,
+      filepath: `${FileSystem.documentDirectory}${filename}`,
+      duration: 0,
+      created_at: new Date().toISOString(),
+      transcription: null
+    }));
+  } catch (error) {
+    console.error('Failed to load recordings:', error);
+    return [];
+  }
+};
+
+// Add this type at the top of the file
+type Recording = {
+  id: string;
+  filename: string;
+  filepath: string;
+  duration: number;
+  created_at: string;
+  transcription: string | null;
 }; 

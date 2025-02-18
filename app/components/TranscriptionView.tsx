@@ -6,7 +6,8 @@ type TranscriptionViewProps = {
   audioUri: string | null;
 };
 
-export default function TranscriptionView({ audioUri }: TranscriptionViewProps) {
+
+export default function TranscriptionView({ audioUri}: TranscriptionViewProps) {
   const [transcription, setTranscription] = useState<string>('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>('');
@@ -31,6 +32,9 @@ export default function TranscriptionView({ audioUri }: TranscriptionViewProps) 
         // Then get the transcription
         const text = await assemblyAI.transcribe(uploadUrl);
         setTranscription(text);
+
+        // Save to database
+        
       } catch (err) {
         setError('Failed to transcribe audio');
         console.error('Transcription error:', err);
