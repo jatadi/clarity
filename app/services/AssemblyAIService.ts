@@ -96,4 +96,80 @@ export class AssemblyAIService {
 
     throw new Error('Transcription timed out');
   }
+
+  async transcribeAndTranslate(audioUrl: string, sourceLanguage: string = 'auto', targetLanguage: string = 'en'): Promise<{
+    transcription: string;
+    sourceLanguage: string;
+    confidence: number;
+  }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/transcript`, {
+        method: 'POST',
+        headers: {
+          'Authorization': this.apiKey,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          audio_url: audioUrl,
+          language_detection: true,
+          language_code: null,
+          format_text: true
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Translation request failed with status ${response.status}`);
+      }
+
+      const data = await response.json();
+      return this.pollTranscriptionAndTranslation(data.id, targetLanguage);
+    } catch (error) {
+      console.error('Translation request error:', error);
+      throw error;
+    }
+  }
+
+  private async pollTranscriptionAndTranslation(transcriptId: string, targetLanguage: string): Promise<{
+    transcription: string;
+    sourceLanguage: string;
+    confidence: number;
+  }> {
+    const maxAttempts = 60;
+    let attempts = 0;
+
+    while (attempts < maxAttempts) {
+      try {
+        const response = await fetch(`${this.baseUrl}/transcript/${transcriptId}`, {
+          headers: {
+            'Authorization': this.apiKey
+          }
+        });
+
+        if (!response.ok) {
+          throw new Error(`Polling failed with status ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('Translation status:', data.status);
+        
+        if (data.status === 'completed') {
+          return {
+            transcription: data.text,
+            sourceLanguage: data.language_code,
+            confidence: data.confidence || 1.0
+          };
+        } else if (data.status === 'error') {
+          throw new Error(data.error || 'Translation failed');
+        }
+
+        await new Promise(resolve => setTimeout(resolve, 3000));
+        attempts++;
+      } catch (error) {
+        console.error('Translation polling error:', error);
+        throw error;
+      }
+    }
+
+    throw new Error('Translation timed out');
+  }
 } 
