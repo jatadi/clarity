@@ -9,9 +9,10 @@ type TranscriptionViewProps = {
 
 type TranscriptionResult = {
   text: string;
-  originalText?: string;
   detectedLanguage?: string;
   confidence?: number;
+  englishTranslation?: string;
+  isTranslating?: boolean;
 };
 
 export default function TranscriptionView({ audioUri }: TranscriptionViewProps) {
@@ -23,7 +24,6 @@ export default function TranscriptionView({ audioUri }: TranscriptionViewProps) 
   useEffect(() => {
     if (!audioUri) {
       setTranscription(null);
-      setError('');
       return;
     }
 
@@ -35,28 +35,46 @@ export default function TranscriptionView({ audioUri }: TranscriptionViewProps) 
         const assemblyAI = new AssemblyAIService();
         const uploadUrl = await assemblyAI.uploadAudio(audioUri);
         
-        // Get transcription with language detection
-        const { transcription: originalText, sourceLanguage, confidence } = 
+        // Get initial transcription with language detection
+        const { transcription: text, sourceLanguage, confidence } = 
           await assemblyAI.transcribeAndTranslate(uploadUrl);
         
-        // If not English, translate to English
-        let englishText = originalText;
-        if (sourceLanguage !== 'en') {
-          englishText = await deeplService.translateToEnglish(originalText, sourceLanguage);
+        // If English, we're done
+        if (sourceLanguage === 'en') {
+          setTranscription({
+            text,
+            detectedLanguage: sourceLanguage,
+            confidence
+          });
+          return;
         }
-        
+
+        // If not English, show original text and start translation
         setTranscription({
-          text: englishText,
-          originalText: sourceLanguage !== 'en' ? originalText : undefined,
+          text,
           detectedLanguage: sourceLanguage,
-          confidence
+          confidence,
+          isTranslating: true
         });
-      } catch (err: any) {
-        let errorMessage = 'Failed to transcribe audio';
-        if (err.message.includes('language detection')) {
-          errorMessage = 'Could not detect spoken language';
+
+        // Translate in background
+        try {
+          const englishText = await deeplService.translateToEnglish(text, sourceLanguage);
+          setTranscription(prev => prev ? {
+            ...prev,
+            englishTranslation: englishText,
+            isTranslating: false
+          } : null);
+        } catch (err) {
+          console.error('Translation error:', err);
+          setTranscription(prev => prev ? {
+            ...prev,
+            isTranslating: false
+          } : null);
         }
-        setError(errorMessage);
+
+      } catch (err: any) {
+        setError('Failed to transcribe audio');
         console.error('Transcription error:', err);
       } finally {
         setIsLoading(false);
@@ -84,10 +102,7 @@ export default function TranscriptionView({ audioUri }: TranscriptionViewProps) 
       {isLoading ? (
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color="#007AFF" />
-          <Text style={styles.loadingText}>
-            Transcribing audio...{'\n'}
-            <Text style={styles.subText}>Auto-detecting language and converting to English</Text>
-          </Text>
+          <Text style={styles.loadingText}>Transcribing audio...</Text>
         </View>
       ) : error ? (
         <Text style={styles.errorText}>{error}</Text>
@@ -104,6 +119,22 @@ export default function TranscriptionView({ audioUri }: TranscriptionViewProps) 
             </View>
           )}
           <Text style={styles.transcriptionText}>{transcription.text}</Text>
+          
+          {transcription.detectedLanguage !== 'en' && (
+            <View style={styles.translationContainer}>
+              <Text style={styles.translationTitle}>English Translation</Text>
+              {transcription.isTranslating ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="small" color="#007AFF" />
+                  <Text style={styles.loadingText}>Translating...</Text>
+                </View>
+              ) : transcription.englishTranslation ? (
+                <Text style={styles.transcriptionText}>
+                  {transcription.englishTranslation}
+                </Text>
+              ) : null}
+            </View>
+          )}
         </View>
       ) : (
         <Text style={styles.transcriptionText}>No transcription available</Text>
@@ -153,9 +184,16 @@ const styles = StyleSheet.create({
     color: '#666',
     fontStyle: 'italic',
   },
-  subText: {
-    fontSize: 12,
-    color: '#999',
-    fontStyle: 'italic'
+  translationContainer: {
+    marginTop: 20,
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  translationTitle: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 10,
+    color: '#666',
   }
 }); 

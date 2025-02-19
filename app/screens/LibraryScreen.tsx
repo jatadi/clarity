@@ -53,45 +53,39 @@ export default function LibraryScreen() {
     return `${minutes}:${Number(seconds) < 10 ? '0' : ''}${seconds}`;
   };
 
-  const handlePlayPause = async (recording: Recording) => {
+  const handlePlayRecording = async (recording: Recording) => {
     try {
-      if (playingId === recording.id && sound) {
-        // Toggle play/pause for current recording
-        const status = await sound.getStatusAsync();
-        if (status.isLoaded) {
-          if (status.isPlaying) {
-            await sound.pauseAsync();
-          } else {
-            await sound.playAsync();
-          }
-        }
-      } else {
-        // Stop current playback if any
-        if (sound) {
-          await sound.unloadAsync();
-        }
-
-        // Start new playback
-        const { sound: newSound } = await Audio.Sound.createAsync(
-          { uri: recording.filepath },
-          { progressUpdateIntervalMillis: 1000 },
-          (status) => {
-            if (status.isLoaded) {
-              setPlaybackStatus({
-                isPlaying: status.isPlaying || false,
-                positionMillis: status.positionMillis || 0,
-                durationMillis: status.durationMillis || 0
-              });
-            }
-          }
-        );
-
-        setSound(newSound);
-        setPlayingId(recording.id);
-        await newSound.playAsync();
+      if (sound) {
+        await sound.unloadAsync();
       }
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri: recording.filepath }
+      );
+      setSound(newSound);
+      
+      // Set volume to maximum (1.0)
+      await newSound.setVolumeAsync(1.0);
+      
+      await newSound.playAsync();
+      setPlaybackStatus({
+        isPlaying: true,
+        positionMillis: 0,
+        durationMillis: recording.duration
+      });
+      setPlayingId(recording.id);
+
+      // Monitor playback status
+      newSound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded) {
+          setPlaybackStatus({
+            isPlaying: status.isPlaying || false,
+            positionMillis: status.positionMillis || 0,
+            durationMillis: status.durationMillis || 0
+          });
+        }
+      });
     } catch (error) {
-      console.error('Playback error:', error);
+      console.error('Failed to play recording:', error);
     }
   };
 
@@ -150,7 +144,7 @@ export default function LibraryScreen() {
           <View style={styles.expandedContent}>
             <View style={styles.playbackControls}>
               <TouchableOpacity
-                onPress={() => handlePlayPause(recording)}
+                onPress={() => handlePlayRecording(recording)}
                 style={styles.playButton}
               >
                 <Ionicons 

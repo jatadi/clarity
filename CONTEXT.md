@@ -104,17 +104,20 @@ Clarity is a mobile application that processes audio through multiple AI service
    - Create TranscriptionView component
    - Implement loading states
    - Display transcription results
-   - Store results in database
+   - Store transcription results in database alongside audio file
 
 ### Phase 3: Translation Feature (Week 3)
 1. Translation service integration
-   - Select and implement translation API
+   - Implement DeepL service API
    - Create translation service wrapper
    - Handle API responses
+   - Store translations in database alongside transcription results and audio file
+
 
 2. Translation UI
    - Create TranslationView component
    - Implement language selection
+   - Language detection: if not english, translate to english, have button to translate to english
    - Display translation results
    - Store translations in database
 
