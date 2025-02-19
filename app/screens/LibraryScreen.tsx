@@ -26,6 +26,7 @@ export default function LibraryScreen() {
   const [playingId, setPlayingId] = useState<string | null>(null);
   const [playbackStatus, setPlaybackStatus] = useState<PlaybackStatus | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [audioDurations, setAudioDurations] = useState<{ [key: string]: number }>({});
 
   useFocusEffect(
     React.useCallback(() => {
@@ -42,6 +43,22 @@ export default function LibraryScreen() {
     try {
       const recordingsData = await getRecordings();
       setRecordings(recordingsData);
+      
+      // Load durations for all recordings
+      const durations: { [key: string]: number } = {};
+      for (const recording of recordingsData) {
+        try {
+          const { sound } = await Audio.Sound.createAsync({ uri: recording.filepath });
+          const status = await sound.getStatusAsync();
+          if (status.isLoaded) {
+            durations[recording.id] = status.durationMillis || 0;
+          }
+          await sound.unloadAsync(); // Important: unload after getting duration
+        } catch (error) {
+          console.error(`Failed to get duration for ${recording.id}:`, error);
+        }
+      }
+      setAudioDurations(durations);
     } catch (error) {
       console.error('Failed to load recordings:', error);
     }
@@ -55,37 +72,51 @@ export default function LibraryScreen() {
 
   const handlePlayRecording = async (recording: Recording) => {
     try {
+      // Unload previous sound if exists
       if (sound) {
         await sound.unloadAsync();
+        setSound(null);
       }
+
       const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: recording.filepath }
+        { uri: recording.filepath },
+        { shouldPlay: true }
       );
       setSound(newSound);
       
-      // Set volume to maximum (1.0)
+      // Set volume to maximum
       await newSound.setVolumeAsync(1.0);
       
-      await newSound.playAsync();
-      setPlaybackStatus({
-        isPlaying: true,
-        positionMillis: 0,
-        durationMillis: recording.duration
-      });
+      // Get and set initial status
+      const status = await newSound.getStatusAsync();
+      if (status.isLoaded) {
+        setPlaybackStatus({
+          isPlaying: true,
+          positionMillis: 0,
+          durationMillis: status.durationMillis || audioDurations[recording.id] || 0
+        });
+      }
       setPlayingId(recording.id);
 
       // Monitor playback status
       newSound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded) {
           setPlaybackStatus({
-            isPlaying: status.isPlaying || false,
-            positionMillis: status.positionMillis || 0,
-            durationMillis: status.durationMillis || 0
+            isPlaying: status.isPlaying,
+            positionMillis: status.positionMillis,
+            durationMillis: status.durationMillis || audioDurations[recording.id] || 0
           });
+          
+          if (status.didJustFinish) {
+            setPlayingId(null);
+          }
         }
       });
     } catch (error) {
       console.error('Failed to play recording:', error);
+      // Reset state on error
+      setPlayingId(null);
+      setPlaybackStatus(null);
     }
   };
 
@@ -118,6 +149,7 @@ export default function LibraryScreen() {
   const renderRecording = (recording: Recording) => {
     const isExpanded = expandedId === recording.id;
     const isPlaying = playingId === recording.id;
+    const duration = audioDurations[recording.id] || 0;
 
     return (
       <View style={styles.recordingItem} key={recording.id}>
@@ -154,12 +186,11 @@ export default function LibraryScreen() {
                 />
               </TouchableOpacity>
               
-              {playbackStatus && (
-                <Text style={styles.duration}>
-                  {formatDuration(playbackStatus.positionMillis)} / 
-                  {formatDuration(playbackStatus.durationMillis)}
-                </Text>
-              )}
+              <Text style={styles.duration}>
+                {isPlaying && playbackStatus 
+                  ? `${formatDuration(playbackStatus.positionMillis)} / ${formatDuration(playbackStatus.durationMillis)}`
+                  : formatDuration(duration)}
+              </Text>
             </View>
 
             {recording.transcription && (
