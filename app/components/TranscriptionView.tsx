@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { AssemblyAIService } from '../services/AssemblyAIService';
 import { DeepLService } from '../services/DeepLService';
+import { ElevenLabsService } from '../services/ElevenLabsService';
+import AudioPlayer from '../components/AudioPlayer';
 
 type TranscriptionViewProps = {
   audioUri: string | null;
@@ -19,7 +21,10 @@ export default function TranscriptionView({ audioUri }: TranscriptionViewProps) 
   const [transcription, setTranscription] = useState<TranscriptionResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>('');
+  const [enhancedAudioUri, setEnhancedAudioUri] = useState<string | null>(null);
+  const [isGeneratingVoice, setIsGeneratingVoice] = useState(false);
   const deeplService = new DeepLService();
+  const elevenLabsService = new ElevenLabsService();
 
   useEffect(() => {
     if (!audioUri) {
@@ -84,6 +89,21 @@ export default function TranscriptionView({ audioUri }: TranscriptionViewProps) 
     transcribeAudio();
   }, [audioUri]);
 
+  const handleEnhanceAudio = async () => {
+    if (!transcription?.text) return;
+    
+    setIsGeneratingVoice(true);
+    try {
+      const audioUri = await elevenLabsService.synthesizeSpeech(transcription.text);
+      setEnhancedAudioUri(audioUri);
+    } catch (error) {
+      console.error('Failed to enhance audio:', error);
+      Alert.alert('Error', 'Failed to generate enhanced audio');
+    } finally {
+      setIsGeneratingVoice(false);
+    }
+  };
+
   const getLanguageName = (code: string) => {
     const languages: { [key: string]: string } = {
       'en': 'English',
@@ -135,6 +155,20 @@ export default function TranscriptionView({ audioUri }: TranscriptionViewProps) 
               ) : null}
             </View>
           )}
+          <View style={styles.enhanceContainer}>
+            <TouchableOpacity 
+              style={styles.enhanceButton}
+              onPress={handleEnhanceAudio}
+              disabled={isGeneratingVoice}
+            >
+              <Text style={styles.enhanceButtonText}>
+                {isGeneratingVoice ? 'Generating...' : 'Play Enhanced Audio'}
+              </Text>
+            </TouchableOpacity>
+            {enhancedAudioUri && (
+              <AudioPlayer uri={enhancedAudioUri} />
+            )}
+          </View>
         </View>
       ) : (
         <Text style={styles.transcriptionText}>No transcription available</Text>
@@ -195,5 +229,22 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: 10,
     color: '#666',
+  },
+  enhanceContainer: {
+    marginTop: 20,
+    paddingTop: 15,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  enhanceButton: {
+    backgroundColor: '#007AFF',
+    padding: 15,
+    borderRadius: 5,
+    alignItems: 'center',
+  },
+  enhanceButtonText: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#fff',
   }
 }); 

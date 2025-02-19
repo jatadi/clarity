@@ -48,6 +48,15 @@ export const initDatabase = () => {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (recording_id) REFERENCES recordings(id)
       );
+
+      CREATE TABLE IF NOT EXISTS enhanced_audio (
+        id TEXT PRIMARY KEY,
+        recording_id TEXT,
+        voice_id TEXT,
+        filepath TEXT,
+        created_at TEXT,
+        FOREIGN KEY (recording_id) REFERENCES recordings (id)
+      );
     `).then(() => resolve(true))
     .catch((error: Error) => reject(error));
   });
@@ -134,4 +143,62 @@ type Recording = {
   duration: number;
   created_at: string;
   transcription: string | null;
+};
+
+// Add new type
+type EnhancedAudio = {
+  id: string;
+  recording_id: string;
+  voice_id: string;
+  filepath: string;
+  created_at: string;
+};
+
+// Update saveEnhancedAudio to use execAsync
+export const saveEnhancedAudio = async (enhancedAudio: EnhancedAudio): Promise<void> => {
+  const { id, recording_id, voice_id, filepath, created_at } = enhancedAudio;
+  await db.execAsync(`
+    INSERT INTO enhanced_audio (id, recording_id, voice_id, filepath, created_at) 
+    VALUES ('${id}', '${recording_id}', '${voice_id}', '${filepath}', '${created_at}');
+  `);
+};
+
+// Get enhanced audio for a recording
+export const getEnhancedAudio = async (recordingId: string): Promise<EnhancedAudio | null> => {
+  const result = (await db.execAsync(`
+    SELECT * FROM enhanced_audio 
+    WHERE recording_id = '${recordingId}'
+    ORDER BY created_at DESC
+    LIMIT 1;
+  `) as unknown) as any[];
+  
+  return result?.[0] || null;
+};
+
+// Delete enhanced audio
+export const deleteEnhancedAudio = async (id: string): Promise<void> => {
+  try {
+    const result = (await db.execAsync(`
+      SELECT filepath FROM enhanced_audio 
+      WHERE id = '${id}';
+    `) as unknown) as any[];
+    
+    if (result?.[0]) {
+      const filepath = result[0].filepath;
+      
+      // Delete from database
+      await db.execAsync(`
+        DELETE FROM enhanced_audio 
+        WHERE id = '${id}';
+      `);
+
+      // Delete file if it exists
+      if (await FileSystem.getInfoAsync(filepath).then(info => info.exists)) {
+        await FileSystem.deleteAsync(filepath);
+      }
+    }
+  } catch (error) {
+    console.error('Delete enhanced audio error:', error);
+    throw error;
+  }
 }; 
