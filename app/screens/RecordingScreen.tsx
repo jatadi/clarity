@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { View, Button, StyleSheet, Text, TextInput, Modal } from 'react-native';
+import { View, Button, StyleSheet, Text, TextInput, Modal, Alert } from 'react-native';
 import { Audio } from 'expo-av';
 import { AudioRecorder } from '../services/AudioRecorder';
 import * as FileSystem from 'expo-file-system';
 import TranscriptionView from '../components/TranscriptionView';
+import { saveRecording } from '../database/Database';
 
 export default function RecordingScreen() {
   const [isRecording, setIsRecording] = useState(false);
@@ -12,11 +13,18 @@ export default function RecordingScreen() {
   const [tempRecordingUri, setTempRecordingUri] = useState<string | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [recordingName, setRecordingName] = useState('');
+  const [recordingDuration, setRecordingDuration] = useState<number>(0);
 
   const handleRecord = async () => {
     if (isRecording) {
       try {
         const uri = await audioRecorder.stopRecording();
+        const { sound } = await Audio.Sound.createAsync({ uri });
+        const status = await sound.getStatusAsync();
+        if (status.isLoaded) {
+          setRecordingDuration(status.durationMillis ?? 0);
+        }
+        await sound.unloadAsync();
         setTempRecordingUri(uri);
         setIsRecording(false);
       } catch (error) {
@@ -55,20 +63,33 @@ export default function RecordingScreen() {
     if (!tempRecordingUri || !recordingName) return;
 
     try {
-      const newFilename = `${recordingName.replace(/\s+/g, '_')}_${Date.now()}.m4a`;
-      const newPath = `${FileSystem.documentDirectory}${newFilename}`;
-      
-      await FileSystem.moveAsync({
+      const timestamp = new Date().toISOString().split('T')[0]; // Get just the date part
+      const filename = `${recordingName || 'Recording'}_${timestamp}.m4a`;
+      const newUri = `${FileSystem.documentDirectory}${filename}`;
+
+      await FileSystem.copyAsync({
         from: tempRecordingUri,
-        to: newPath
+        to: newUri
       });
 
-      // Clear the temporary recording and name
-      setTempRecordingUri(null);
+      // Save to database
+      await saveRecording(
+        filename,
+        filename,
+        newUri,
+        recordingDuration
+      );
+
+      // Clear recording name
       setRecordingName('');
+      setTempRecordingUri(null);
       setShowSaveModal(false);
+      
+      // Show success message
+      Alert.alert('Success', 'Recording saved successfully');
     } catch (error) {
       console.error('Failed to save recording:', error);
+      Alert.alert('Error', 'Failed to save recording');
     }
   };
 

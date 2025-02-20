@@ -1,50 +1,93 @@
-# Welcome to your Expo app 👋
+# Clarity - AI-Powered Audio Processing App
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Clarity is a mobile application that processes audio through multiple AI services to enable seamless transcription, translation, and voice synthesis.
 
-## Get started
+## Features
 
-1. Install dependencies
+- 🎙️ **Audio Recording & Management**
+  - Record and save audio files
+  - Playback with pause/resume
+  - Rename and organize recordings
+  - Star important recordings
+  - Duration display
 
-   ```bash
-   npm install
-   ```
+- 🔤 **Transcription & Translation**
+  - Automatic speech recognition via AssemblyAI
+  - Language detection
+  - Auto-translation to English
+  - Real-time transcription display
 
-2. Start the app
+- 🗣️ **AI Voice Synthesis**
+  - Text-to-speech via ElevenLabs
+  - Multiple voice options
+  - Natural-sounding output
 
-   ```bash
-    npx expo start
-   ```
+## Getting Started
 
-In the output, you'll find options to open the app in a
+### Prerequisites
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+- Node.js (v16 or later)
+- npm or yarn
+- Expo Go app on your mobile device
+- API keys for:
+  - AssemblyAI
+  - ElevenLabs
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+### Installation
 
-## Get a fresh project
-
-When you're ready, run:
-
+1. Clone the repository
 ```bash
-npm run reset-project
+git clone https://github.com/yourusername/clarity.git
+cd clarity
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+2. Install dependencies
+```bash
+npm install
+```
 
-## Learn more
+3. Create a `.env` file in the root directory and add your API keys:
+```
+ASSEMBLY_AI_KEY=your_assembly_ai_key
+ELEVEN_LABS_KEY=your_eleven_labs_key
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+4. Start the development server
+```bash
+npx expo start
+```
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+5. Scan the QR code with Expo Go (Android) or Camera app (iOS)
 
-## Join the community
+## Project Structure
 
-Join our community of developers creating universal apps.
+```
+clarity/
+├── app/
+│   ├── components/     # Reusable UI components
+│   ├── screens/        # Screen components
+│   ├── services/       # API services
+│   └── database/       # SQLite database operations
+├── assets/            # Static assets
+└── App.tsx           # Root component
+```
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Tech Stack
+
+- React Native with Expo
+- SQLite for local storage
+- AssemblyAI for transcription
+- ElevenLabs for voice synthesis
+- TypeScript for type safety
+
+## Contributing
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details

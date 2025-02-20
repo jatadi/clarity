@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { View, StyleSheet, Text, TouchableOpacity, Alert, ScrollView } from 'react-native';
+import { View, StyleSheet, Text, TouchableOpacity, Alert, ScrollView, Modal, TextInput } from 'react-native';
 import { Audio } from 'expo-av';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { getRecordings, deleteRecording } from '../database/Database';
+import { getRecordings, deleteRecording, starRecording, renameRecording } from '../database/Database';
 
 type Recording = {
   id: string;
@@ -12,6 +12,8 @@ type Recording = {
   duration: number;
   created_at: string;
   transcription: string | null;
+  is_starred: boolean;
+  starred_at: string | null;
 };
 
 type PlaybackStatus = {
@@ -27,6 +29,9 @@ export default function LibraryScreen() {
   const [playbackStatus, setPlaybackStatus] = useState<PlaybackStatus | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [audioDurations, setAudioDurations] = useState<{ [key: string]: number }>({});
+  const [showOptions, setShowOptions] = useState<string | null>(null);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [newName, setNewName] = useState('');
 
   useFocusEffect(
     React.useCallback(() => {
@@ -72,7 +77,25 @@ export default function LibraryScreen() {
 
   const handlePlayRecording = async (recording: Recording) => {
     try {
-      // Unload previous sound if exists
+      if (sound && playingId === recording.id) {
+        // If the same recording is playing, toggle play/pause
+        if (playbackStatus?.isPlaying) {
+          await sound.pauseAsync();
+          setPlaybackStatus(prev => prev ? {
+            ...prev,
+            isPlaying: false
+          } : null);
+        } else {
+          await sound.playAsync();
+          setPlaybackStatus(prev => prev ? {
+            ...prev,
+            isPlaying: true
+          } : null);
+        }
+        return;
+      }
+
+      // If different recording or no sound, create new sound
       if (sound) {
         await sound.unloadAsync();
         setSound(null);
@@ -84,10 +107,8 @@ export default function LibraryScreen() {
       );
       setSound(newSound);
       
-      // Set volume to maximum
       await newSound.setVolumeAsync(1.0);
       
-      // Get and set initial status
       const status = await newSound.getStatusAsync();
       if (status.isLoaded) {
         setPlaybackStatus({
@@ -98,7 +119,6 @@ export default function LibraryScreen() {
       }
       setPlayingId(recording.id);
 
-      // Monitor playback status
       newSound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded) {
           setPlaybackStatus({
@@ -109,12 +129,12 @@ export default function LibraryScreen() {
           
           if (status.didJustFinish) {
             setPlayingId(null);
+            setPlaybackStatus(prev => prev ? { ...prev, isPlaying: false } : null);
           }
         }
       });
     } catch (error) {
       console.error('Failed to play recording:', error);
-      // Reset state on error
       setPlayingId(null);
       setPlaybackStatus(null);
     }
@@ -146,6 +166,40 @@ export default function LibraryScreen() {
     );
   };
 
+  const handleOptionsPress = (recording: Recording) => {
+    setShowOptions(recording.id);
+  };
+
+  const handleStar = async (recording: Recording) => {
+    try {
+      await starRecording(recording.id, !recording.is_starred);
+      loadRecordings();
+    } catch (error) {
+      console.error('Failed to star recording:', error);
+      Alert.alert('Error', 'Failed to star recording');
+    }
+    setShowOptions(null);
+  };
+
+  const handleRename = (recording: Recording) => {
+    // Remove extension from filename for editing
+    const nameWithoutExtension = recording.filename.replace(/\.[^/.]+$/, '');
+    setNewName(nameWithoutExtension);
+    setIsRenaming(true);
+    setShowOptions(null);
+  };
+
+  const handleRenameSubmit = async (recording: Recording) => {
+    try {
+      await renameRecording(recording.id, newName);
+      await loadRecordings(); // Reload the list
+      setIsRenaming(false);
+    } catch (error) {
+      console.error('Failed to rename recording:', error);
+      Alert.alert('Error', 'Failed to rename recording');
+    }
+  };
+
   const renderRecording = (recording: Recording) => {
     const isExpanded = expandedId === recording.id;
     const isPlaying = playingId === recording.id;
@@ -158,12 +212,15 @@ export default function LibraryScreen() {
           onPress={() => setExpandedId(isExpanded ? null : recording.id)}
         >
           <View style={styles.titleRow}>
-            <Text style={styles.filename}>{recording.filename}</Text>
+            <Text style={styles.filename}>
+              {recording.is_starred && <Ionicons name="star" size={16} color="#FFD700" />}
+              {recording.filename}
+            </Text>
             <TouchableOpacity
-              style={styles.deleteButton}
-              onPress={() => handleDelete(recording)}
+              style={styles.optionsButton}
+              onPress={() => handleOptionsPress(recording)}
             >
-              <Ionicons name="trash-outline" size={24} color="red" />
+              <Ionicons name="ellipsis-vertical" size={24} color="#666" />
             </TouchableOpacity>
           </View>
           
@@ -201,6 +258,74 @@ export default function LibraryScreen() {
             )}
           </View>
         )}
+
+        {showOptions === recording.id && (
+          <View style={styles.optionsMenu}>
+            <TouchableOpacity 
+              style={styles.optionItem}
+              onPress={() => handleStar(recording)}
+            >
+              <Ionicons 
+                name={recording.is_starred ? "star" : "star-outline"} 
+                size={20} 
+                color="#FFD700" 
+              />
+              <Text style={styles.optionText}>
+                {recording.is_starred ? 'Unstar' : 'Star'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.optionItem}
+              onPress={() => handleRename(recording)}
+            >
+              <Ionicons name="pencil-outline" size={20} color="#007AFF" />
+              <Text style={styles.optionText}>Rename</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.optionItem}
+              onPress={() => handleDelete(recording)}
+            >
+              <Ionicons name="trash-outline" size={20} color="red" />
+              <Text style={styles.optionText}>Delete</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Rename Modal */}
+        <Modal
+          visible={isRenaming}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setIsRenaming(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Rename Recording</Text>
+              <TextInput
+                style={styles.input}
+                value={newName}
+                onChangeText={setNewName}
+                autoFocus
+              />
+              <View style={styles.modalButtons}>
+                <TouchableOpacity 
+                  onPress={() => setIsRenaming(false)}
+                  style={styles.modalButton}
+                >
+                  <Text style={styles.modalButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  onPress={() => handleRenameSubmit(recording)}
+                  style={[styles.modalButton, styles.modalButtonPrimary]}
+                >
+                  <Text style={[styles.modalButtonText, styles.modalButtonTextPrimary]}>
+                    Rename
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </View>
     );
   };
@@ -271,12 +396,77 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     color: '#333',
   },
-  deleteButton: {
+  optionsButton: {
     padding: 5,
   },
   emptyText: {
     textAlign: 'center',
     marginTop: 50,
     color: '#666',
+  },
+  optionsMenu: {
+    position: 'absolute',
+    right: 10,
+    top: 40,
+    backgroundColor: 'white',
+    borderRadius: 8,
+    padding: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    zIndex: 1000,
+  },
+  optionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+  },
+  optionText: {
+    marginLeft: 10,
+    fontSize: 16,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: 'white',
+    borderRadius: 8,
+    padding: 20,
+    width: '80%',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 15,
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 4,
+    padding: 8,
+    marginBottom: 15,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+  },
+  modalButton: {
+    marginLeft: 10,
+    padding: 8,
+  },
+  modalButtonPrimary: {
+    backgroundColor: '#007AFF',
+    borderRadius: 4,
+  },
+  modalButtonText: {
+    fontSize: 16,
+  },
+  modalButtonTextPrimary: {
+    color: 'white',
   },
 }); 
