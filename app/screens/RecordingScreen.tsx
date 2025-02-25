@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Button, StyleSheet, Text, TextInput, Modal, Alert, TouchableOpacity } from 'react-native';
 import { Audio } from 'expo-av';
 import { AudioRecorder } from '../services/AudioRecorder';
@@ -20,6 +20,8 @@ export default function RecordingScreen() {
     positionMillis: number;
     durationMillis: number;
   } | null>(null);
+
+  const transcriptionRef = useRef<{ getText: () => string | null }>(null);
 
   const handleRecord = async () => {
     if (isRecording) {
@@ -109,7 +111,7 @@ export default function RecordingScreen() {
     if (!tempRecordingUri || !recordingName) return;
 
     try {
-      const timestamp = new Date().toISOString().split('T')[0]; // Get just the date part
+      const timestamp = new Date().toISOString().split('T')[0];
       const filename = `${recordingName || 'Recording'}_${timestamp}.m4a`;
       const newUri = `${FileSystem.documentDirectory}${filename}`;
 
@@ -118,20 +120,21 @@ export default function RecordingScreen() {
         to: newUri
       });
 
-      // Save to database
+      // Get the transcription from the TranscriptionView component
+      const currentTranscription = transcriptionRef.current?.getText();
+      console.log('Current transcription:', currentTranscription); // Debug log
+
       await saveRecording(
-        filename,
+        filename, // Using filename as ID
         filename,
         newUri,
-        recordingDuration
+        recordingDuration,
+        currentTranscription
       );
 
-      // Clear recording name
       setRecordingName('');
       setTempRecordingUri(null);
       setShowSaveModal(false);
-      
-      // Show success message
       Alert.alert('Success', 'Recording saved successfully');
     } catch (error) {
       console.error('Failed to save recording:', error);
@@ -184,7 +187,10 @@ export default function RecordingScreen() {
             />
           </View>
           
-          <TranscriptionView audioUri={tempRecordingUri} />
+          <TranscriptionView 
+            audioUri={tempRecordingUri} 
+            ref={transcriptionRef}
+          />
         </>
       )}
 

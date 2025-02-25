@@ -3,7 +3,7 @@ import { View, StyleSheet, Text, TouchableOpacity, Alert, ScrollView, Modal, Tex
 import { Audio } from 'expo-av';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { getRecordings, deleteRecording, starRecording, renameRecording } from '../database/Database';
+import { getRecordings, deleteRecording, starRecording, renameRecording, getTranscriptionForRecording } from '../database/Database';
 
 type Recording = {
   id: string;
@@ -31,6 +31,8 @@ export default function LibraryScreen() {
   const [showOptions, setShowOptions] = useState<string | null>(null);
   const [isRenaming, setIsRenaming] = useState(false);
   const [newName, setNewName] = useState('');
+  const [showTranscriptionModal, setShowTranscriptionModal] = useState(false);
+  const [selectedTranscription, setSelectedTranscription] = useState<string | null>(null);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -46,12 +48,23 @@ export default function LibraryScreen() {
   const loadRecordings = async () => {
     try {
       const recordingsData = await getRecordings();
-      console.log('Loaded recordings:', recordingsData); // Debug log
-      setRecordings(recordingsData);
+      
+      // Fetch transcriptions for each recording
+      const recordingsWithTranscriptions = await Promise.all(
+        recordingsData.map(async (recording) => {
+          const transcription = await getTranscriptionForRecording(recording.id);
+          return {
+            ...recording,
+            transcription
+          };
+        })
+      );
+
+      setRecordings(recordingsWithTranscriptions);
       
       // Load durations for all recordings
       const durations: { [key: string]: number } = {};
-      for (const recording of recordingsData) {
+      for (const recording of recordingsWithTranscriptions) {
         try {
           const { sound } = await Audio.Sound.createAsync({ uri: recording.filepath });
           const status = await sound.getStatusAsync();
@@ -167,7 +180,12 @@ export default function LibraryScreen() {
   };
 
   const handleOptionsPress = (recording: Recording) => {
-    setShowOptions(recording.id);
+    // If options are already shown for this recording, close them
+    if (showOptions === recording.id) {
+      setShowOptions(null);
+    } else {
+      setShowOptions(recording.id);
+    }
   };
 
   const handleStar = async (recording: Recording) => {
@@ -213,6 +231,15 @@ export default function LibraryScreen() {
       console.error('Failed to rename recording:', error);
       Alert.alert('Error', 'Failed to rename recording');
     }
+  };
+
+  const handleShowTranscription = async (recording: Recording) => {
+    console.log('Showing transcription for recording:', recording);
+    const transcription = await getTranscriptionForRecording(recording.id);
+    console.log('Retrieved transcription:', transcription);
+    setSelectedTranscription(transcription);
+    setShowTranscriptionModal(true);
+    setShowOptions(null);
   };
 
   const renderRecording = (recording: Recording) => {
@@ -291,6 +318,13 @@ export default function LibraryScreen() {
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.optionItem}
+              onPress={() => handleShowTranscription(recording)}
+            >
+              <Ionicons name="document-text" size={20} color="#007AFF" />
+              <Text style={styles.optionText}>Show Transcription</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={styles.optionItem}
               onPress={() => handleRename(recording)}
             >
               <Ionicons name="pencil-outline" size={20} color="#007AFF" />
@@ -351,6 +385,34 @@ export default function LibraryScreen() {
       {recordings.length === 0 && (
         <Text style={styles.emptyText}>No recordings yet</Text>
       )}
+
+      {/* Add transcription modal */}
+      <Modal
+        visible={showTranscriptionModal}
+        animationType="slide"
+        transparent={true}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Transcription</Text>
+            <ScrollView style={styles.transcriptionScroll}>
+              {selectedTranscription ? (
+                <Text style={styles.transcriptionText}>{selectedTranscription}</Text>
+              ) : (
+                <Text style={styles.noTranscriptionText}>No transcription available</Text>
+              )}
+            </ScrollView>
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={styles.modalButton}
+                onPress={() => setShowTranscriptionModal(false)}
+              >
+                <Text style={styles.modalButtonText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -400,11 +462,15 @@ const styles = StyleSheet.create({
   },
   transcriptionContainer: {
     marginTop: 10,
+    padding: 10,
+    backgroundColor: '#f8f8f8',
+    borderRadius: 8,
   },
   transcriptionTitle: {
     fontSize: 14,
     fontWeight: '500',
     marginBottom: 5,
+    color: '#666',
   },
   transcriptionText: {
     fontSize: 14,
@@ -483,5 +549,15 @@ const styles = StyleSheet.create({
   },
   modalButtonTextPrimary: {
     color: 'white',
+  },
+  transcriptionScroll: {
+    maxHeight: 300,
+    marginVertical: 10,
+  },
+  noTranscriptionText: {
+    fontSize: 16,
+    color: '#666',
+    fontStyle: 'italic',
+    textAlign: 'center',
   },
 }); 

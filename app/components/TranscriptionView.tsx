@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, ActivityIndicator, StyleSheet, TouchableOpacity, Alert } from 'react-native';
 import { AssemblyAIService } from '../services/AssemblyAIService';
 import { DeepLService } from '../services/DeepLService';
@@ -19,7 +19,7 @@ type TranscriptionResult = {
   isTranslating?: boolean;
 };
 
-export default function TranscriptionView({ audioUri }: TranscriptionViewProps) {
+export default React.forwardRef((props: TranscriptionViewProps, ref) => {
   const [transcription, setTranscription] = useState<TranscriptionResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string>('');
@@ -34,8 +34,15 @@ export default function TranscriptionView({ audioUri }: TranscriptionViewProps) 
   const deeplService = new DeepLService();
   const elevenLabsService = new ElevenLabsService();
 
+  React.useImperativeHandle(ref, () => ({
+    getText: () => {
+      console.log('getText called, returning:', transcription?.text);
+      return transcription?.text || null;
+    }
+  }));
+
   useEffect(() => {
-    if (!audioUri) {
+    if (!props.audioUri) {
       setTranscription(null);
       return;
     }
@@ -46,7 +53,7 @@ export default function TranscriptionView({ audioUri }: TranscriptionViewProps) 
       
       try {
         const assemblyAI = new AssemblyAIService();
-        const uploadUrl = await assemblyAI.uploadAudio(audioUri);
+        const uploadUrl = await assemblyAI.uploadAudio(props.audioUri);
         
         // Get initial transcription with language detection
         const { transcription: text, sourceLanguage, confidence } = 
@@ -95,7 +102,7 @@ export default function TranscriptionView({ audioUri }: TranscriptionViewProps) 
     };
 
     transcribeAudio();
-  }, [audioUri]);
+  }, [props.audioUri]);
 
   const handleEnhanceAudio = async () => {
     if (!transcription?.text) return;
@@ -191,7 +198,7 @@ export default function TranscriptionView({ audioUri }: TranscriptionViewProps) 
     };
   }, [enhancedSound]);
 
-  if (!audioUri) return null;
+  if (!props.audioUri) return null;
 
   return (
     <View style={styles.container}>
@@ -267,7 +274,7 @@ export default function TranscriptionView({ audioUri }: TranscriptionViewProps) 
       )}
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   container: {

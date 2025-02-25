@@ -1,4 +1,5 @@
 import * as SQLite from 'expo-sqlite';
+import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
 import * as FileSystem from 'expo-file-system';
 
@@ -27,14 +28,13 @@ type SQLResultSet = {
 
 const db = SQLite.openDatabaseSync('clarity.db');
 
-export const initDatabase = () => {
-  return new Promise((resolve, reject) => {
-    db.execAsync(`
-      DROP TABLE IF EXISTS enhanced_audio;
-      DROP TABLE IF EXISTS transcriptions;
-      DROP TABLE IF EXISTS recordings;
+let isInitialized = false;
 
-      CREATE TABLE recordings (
+export const initDatabase = async () => {
+  try {
+    console.log('Initializing database...');
+    await db.execAsync(`
+      CREATE TABLE IF NOT EXISTS recordings (
         id TEXT PRIMARY KEY,
         filename TEXT NOT NULL,
         filepath TEXT NOT NULL,
@@ -43,7 +43,7 @@ export const initDatabase = () => {
         is_starred INTEGER DEFAULT 0
       );
 
-      CREATE TABLE transcriptions (
+      CREATE TABLE IF NOT EXISTS transcriptions (
         id TEXT PRIMARY KEY,
         recording_id TEXT NOT NULL,
         text TEXT NOT NULL,
@@ -53,7 +53,7 @@ export const initDatabase = () => {
         FOREIGN KEY (recording_id) REFERENCES recordings(id)
       );
 
-      CREATE TABLE enhanced_audio (
+      CREATE TABLE IF NOT EXISTS enhanced_audio (
         id TEXT PRIMARY KEY,
         recording_id TEXT,
         voice_id TEXT,
@@ -61,21 +61,47 @@ export const initDatabase = () => {
         created_at TEXT,
         FOREIGN KEY (recording_id) REFERENCES recordings (id)
       );
-    `).then(() => resolve(true))
-    .catch((error: Error) => reject(error));
-  });
+    `);
+    isInitialized = true;
+    console.log('Database initialized successfully');
+  } catch (error) {
+    console.error('Database initialization error:', error);
+    throw error;
+  }
 };
 
-export const saveRecording = (
+// Add this helper function
+const ensureDbInitialized = async () => {
+  if (!isInitialized) {
+    await initDatabase();
+  }
+};
+
+export const saveRecording = async (
   id: string,
   filename: string,
   filepath: string,
-  duration: number
+  duration: number,
+  transcription: string | null = null
 ) => {
-  return db.execAsync(`
-    INSERT INTO recordings (id, filename, filepath, duration, is_starred) 
-    VALUES ('${id}', '${filename}', '${filepath}', ${duration}, 0);
-  `);
+  try {
+    await db.execAsync(`
+      INSERT INTO recordings (id, filename, filepath, duration, is_starred) 
+      VALUES ('${id}', '${filename}', '${filepath}', ${duration}, 0);
+    `);
+
+    if (transcription) {
+      const transcriptionId = uuidv4();
+      const escapedText = transcription.replace(/'/g, "''");
+      await db.execAsync(`
+        INSERT INTO transcriptions (id, recording_id, text, language) 
+        VALUES ('${transcriptionId}', '${id}', '${escapedText}', 'en');
+      `);
+    }
+  } catch (error) {
+    console.error('Error saving recording with transcription:', error);
+    throw error;
+  }
 };
 
 export const saveTranscription = (
@@ -118,57 +144,43 @@ export const deleteRecording = async (id: string) => {
 
 export const getRecordings = async () => {
   try {
+    await ensureDbInitialized();
+    
+    // Get files from filesystem
     const filePaths = await FileSystem.readDirectoryAsync(
       FileSystem.documentDirectory || ''
     );
-    
     const audioFiles = filePaths.filter(file => file.endsWith('.m4a'));
+
+    // If no audio files, return empty array
+    if (audioFiles.length === 0) {
+      return [];
+    }
+
+    // Get database records
     const result = (await db.execAsync(`
-      SELECT * FROM recordings;
+      SELECT r.*, t.text as transcription_text
+      FROM recordings r
+      LEFT JOIN transcriptions t ON t.recording_id = r.id;
     `) as unknown) as any[];
 
-    // More defensive handling of SQLite result
-    const dbRecordings = Array.isArray(result) && result.length > 0 
-      ? (result[0]?.rows?._array || [])
-      : [];
+    const dbRecordings = result?.[0]?.rows?._array || [];
 
-    console.log('DB Recordings:', dbRecordings); // Debug log
-
-    type DBRecord = {
-      filename: string;
-      duration: number;
-      created_at: string;
-      is_starred: number;
-    };
-
-    const dbRecordingsMap = new Map(
-      dbRecordings.map((record: DBRecord) => [record.filename, record])
-    );
-
+    // Map filesystem files to recordings
     return audioFiles.map(filename => {
-      const dbRecord = dbRecordingsMap.get(filename) as DBRecord | undefined;
-      if (!dbRecord) {
-        return {
-          id: filename,
-          filename,
-          filepath: `${FileSystem.documentDirectory}${filename}`,
-          duration: 0,
-          created_at: new Date().toISOString(),
-          is_starred: false,
-          transcription: null
-        };
-      }
-
+      const dbRecord = dbRecordings.find((r: DBRecord) => r.filename === filename);
+      
       return {
         id: filename,
         filename,
         filepath: `${FileSystem.documentDirectory}${filename}`,
-        duration: dbRecord.duration || 0,
-        created_at: dbRecord.created_at,
-        is_starred: Boolean(dbRecord.is_starred),
-        transcription: null
+        duration: dbRecord?.duration || 0,
+        created_at: dbRecord?.created_at || new Date().toISOString(),
+        is_starred: Boolean(dbRecord?.is_starred),
+        transcription: dbRecord?.transcription_text || null
       };
     });
+
   } catch (error) {
     console.error('Failed to load recordings:', error);
     return [];
@@ -302,4 +314,35 @@ export const renameRecording = async (id: string, newName: string) => {
     console.error('Rename error:', error);
     throw error;
   }
+};
+
+// Add function to get transcription for a recording
+export const getTranscriptionForRecording = async (recordingId: string): Promise<string | null> => {
+  try {
+    const result = (await db.execAsync(`
+      SELECT text FROM transcriptions 
+      WHERE recording_id = '${recordingId}'
+      ORDER BY created_at DESC
+      LIMIT 1;
+    `) as unknown) as any[];
+
+    // More defensive handling of SQLite result
+    const transcriptions = Array.isArray(result) && result.length > 0 
+      ? (result[0]?.rows?._array || [])
+      : [];
+
+    console.log('Transcription result:', transcriptions); // Debug log
+    return transcriptions[0]?.text || null;
+  } catch (error) {
+    console.error('Error getting transcription:', error);
+    return null;
+  }
+};
+
+type DBRecord = {
+  filename: string;
+  duration: number;
+  created_at: string;
+  is_starred: number;
+  transcription_text: string | null;
 }; 

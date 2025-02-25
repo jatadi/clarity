@@ -8,7 +8,11 @@ export class AssemblyAIService {
     this.apiKey = 'dac8d7b59ac9423e8b02f598509188b1';
   }
 
-  async uploadAudio(fileUri: string): Promise<string> {
+  async uploadAudio(fileUri: string | null): Promise<string> {
+    if (!fileUri) {
+      throw new Error('No audio file provided');
+    }
+
     try {
       // Read file as binary data
       const response = await fetch(fileUri);
