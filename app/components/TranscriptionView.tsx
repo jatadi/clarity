@@ -4,6 +4,8 @@ import { AssemblyAIService } from '../services/AssemblyAIService';
 import { DeepLService } from '../services/DeepLService';
 import { ElevenLabsService } from '../services/ElevenLabsService';
 import AudioPlayer from '../components/AudioPlayer';
+import { Audio } from 'expo-av';
+import { Ionicons } from '@expo/vector-icons';
 
 type TranscriptionViewProps = {
   audioUri: string | null;
@@ -23,6 +25,12 @@ export default function TranscriptionView({ audioUri }: TranscriptionViewProps) 
   const [error, setError] = useState<string>('');
   const [enhancedAudioUri, setEnhancedAudioUri] = useState<string | null>(null);
   const [isGeneratingVoice, setIsGeneratingVoice] = useState(false);
+  const [enhancedSound, setEnhancedSound] = useState<Audio.Sound | null>(null);
+  const [enhancedPlaybackStatus, setEnhancedPlaybackStatus] = useState<{
+    isPlaying: boolean;
+    positionMillis: number;
+    durationMillis: number;
+  } | null>(null);
   const deeplService = new DeepLService();
   const elevenLabsService = new ElevenLabsService();
 
@@ -104,6 +112,67 @@ export default function TranscriptionView({ audioUri }: TranscriptionViewProps) 
     }
   };
 
+  const formatDuration = (millis: number) => {
+    const minutes = Math.floor(millis / 60000);
+    const seconds = ((millis % 60000) / 1000).toFixed(0);
+    return `${minutes}:${Number(seconds) < 10 ? '0' : ''}${seconds}`;
+  };
+
+  const handleEnhancedPlay = async () => {
+    if (!enhancedAudioUri) return;
+
+    try {
+      if (enhancedSound) {
+        if (enhancedPlaybackStatus?.isPlaying) {
+          await enhancedSound.pauseAsync();
+          setEnhancedPlaybackStatus(prev => prev ? { ...prev, isPlaying: false } : null);
+        } else {
+          if (enhancedPlaybackStatus?.positionMillis === enhancedPlaybackStatus?.durationMillis) {
+            await enhancedSound.setPositionAsync(0);
+          }
+          await enhancedSound.playAsync();
+          setEnhancedPlaybackStatus(prev => prev ? { ...prev, isPlaying: true } : null);
+        }
+      } else {
+        const { sound: newSound } = await Audio.Sound.createAsync(
+          { uri: enhancedAudioUri },
+          { shouldPlay: true }
+        );
+        
+        setEnhancedSound(newSound);
+        
+        const status = await newSound.getStatusAsync();
+        if (status.isLoaded) {
+          setEnhancedPlaybackStatus({
+            isPlaying: true,
+            positionMillis: 0,
+            durationMillis: status.durationMillis || 0
+          });
+        }
+
+        newSound.setOnPlaybackStatusUpdate((status) => {
+          if (status.isLoaded) {
+            setEnhancedPlaybackStatus({
+              isPlaying: status.isPlaying,
+              positionMillis: status.positionMillis,
+              durationMillis: status.durationMillis || 0
+            });
+
+            if (status.didJustFinish) {
+              setEnhancedPlaybackStatus(prev => prev ? {
+                ...prev,
+                isPlaying: false,
+                positionMillis: 0
+              } : null);
+            }
+          }
+        });
+      }
+    } catch (error) {
+      console.error('Failed to play enhanced audio:', error);
+    }
+  };
+
   const getLanguageName = (code: string) => {
     const languages: { [key: string]: string } = {
       'en': 'English',
@@ -113,6 +182,14 @@ export default function TranscriptionView({ audioUri }: TranscriptionViewProps) 
     };
     return languages[code] || code;
   };
+
+  useEffect(() => {
+    return () => {
+      if (enhancedSound) {
+        enhancedSound.unloadAsync();
+      }
+    };
+  }, [enhancedSound]);
 
   if (!audioUri) return null;
 
@@ -166,7 +243,22 @@ export default function TranscriptionView({ audioUri }: TranscriptionViewProps) 
               </Text>
             </TouchableOpacity>
             {enhancedAudioUri && (
-              <AudioPlayer uri={enhancedAudioUri} />
+              <TouchableOpacity 
+                style={styles.playButton}
+                onPress={handleEnhancedPlay}
+              >
+                <Ionicons 
+                  name={enhancedPlaybackStatus?.isPlaying ? "pause" : "play"} 
+                  size={24} 
+                  color="#007AFF" 
+                />
+                {enhancedPlaybackStatus && (
+                  <Text style={styles.durationText}>
+                    {formatDuration(enhancedPlaybackStatus.positionMillis)} / 
+                    {formatDuration(enhancedPlaybackStatus.durationMillis)}
+                  </Text>
+                )}
+              </TouchableOpacity>
             )}
           </View>
         </View>
@@ -246,5 +338,17 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: 'bold',
     color: '#fff',
-  }
+  },
+  playButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
+    marginTop: 10,
+  },
+  durationText: {
+    marginLeft: 10,
+    color: '#666',
+  },
 }); 
