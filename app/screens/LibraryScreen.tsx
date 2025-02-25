@@ -11,9 +11,8 @@ type Recording = {
   filepath: string;
   duration: number;
   created_at: string;
-  transcription: string | null;
   is_starred: boolean;
-  starred_at: string | null;
+  transcription: string | null;
 };
 
 type PlaybackStatus = {
@@ -47,6 +46,7 @@ export default function LibraryScreen() {
   const loadRecordings = async () => {
     try {
       const recordingsData = await getRecordings();
+      console.log('Loaded recordings:', recordingsData); // Debug log
       setRecordings(recordingsData);
       
       // Load durations for all recordings
@@ -58,7 +58,7 @@ export default function LibraryScreen() {
           if (status.isLoaded) {
             durations[recording.id] = status.durationMillis || 0;
           }
-          await sound.unloadAsync(); // Important: unload after getting duration
+          await sound.unloadAsync();
         } catch (error) {
           console.error(`Failed to get duration for ${recording.id}:`, error);
         }
@@ -172,8 +172,17 @@ export default function LibraryScreen() {
 
   const handleStar = async (recording: Recording) => {
     try {
-      await starRecording(recording.id, !recording.is_starred);
-      loadRecordings();
+      const newStarredStatus = !recording.is_starred;
+      await starRecording(recording.id, newStarredStatus);
+      
+      // Update local state
+      setRecordings(prevRecordings => 
+        prevRecordings.map(r => 
+          r.id === recording.id 
+            ? { ...r, is_starred: newStarredStatus }
+            : r
+        )
+      );
     } catch (error) {
       console.error('Failed to star recording:', error);
       Alert.alert('Error', 'Failed to star recording');
@@ -191,9 +200,15 @@ export default function LibraryScreen() {
 
   const handleRenameSubmit = async (recording: Recording) => {
     try {
-      await renameRecording(recording.id, newName);
-      await loadRecordings(); // Reload the list
+      const newFilename = await renameRecording(recording.id, newName);
+      // Update the recording in the local state
+      setRecordings(recordings.map(r => 
+        r.id === recording.id 
+          ? { ...r, filename: newFilename }
+          : r
+      ));
       setIsRenaming(false);
+      setNewName('');
     } catch (error) {
       console.error('Failed to rename recording:', error);
       Alert.alert('Error', 'Failed to rename recording');
@@ -213,7 +228,7 @@ export default function LibraryScreen() {
         >
           <View style={styles.titleRow}>
             <Text style={styles.filename}>
-              {recording.is_starred && <Ionicons name="star" size={16} color="#FFD700" />}
+              {recording.is_starred && '⭐ '}
               {recording.filename}
             </Text>
             <TouchableOpacity

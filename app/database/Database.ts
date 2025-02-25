@@ -40,9 +40,7 @@ export const initDatabase = () => {
         filepath TEXT NOT NULL,
         duration INTEGER,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        is_starred INTEGER DEFAULT 0,
-        starred_at TIMESTAMP
+        is_starred INTEGER DEFAULT 0
       );
 
       CREATE TABLE transcriptions (
@@ -75,8 +73,8 @@ export const saveRecording = (
   duration: number
 ) => {
   return db.execAsync(`
-    INSERT INTO recordings (id, filename, filepath, duration, is_starred, starred_at) 
-    VALUES ('${id}', '${filename}', '${filepath}', ${duration}, 0, NULL);
+    INSERT INTO recordings (id, filename, filepath, duration, is_starred) 
+    VALUES ('${id}', '${filename}', '${filepath}', ${duration}, 0);
   `);
 };
 
@@ -120,61 +118,31 @@ export const deleteRecording = async (id: string) => {
 
 export const getRecordings = async () => {
   try {
-    // Get files from filesystem first
     const filePaths = await FileSystem.readDirectoryAsync(
       FileSystem.documentDirectory || ''
     );
     
     const audioFiles = filePaths.filter(file => file.endsWith('.m4a'));
-    
-    let dbRecordingsMap = new Map();
-    
-    try {
-      // Try to get database records
-      const dbRecordings = (await db.execAsync(`
-        SELECT id, filename, filepath, duration, created_at, is_starred, starred_at 
-        FROM recordings;
-      `) as unknown) as any[];
+    const dbRecordings = (await db.execAsync(`
+      SELECT * FROM recordings;
+    `) as unknown) as any[];
 
-      // Create a map of database records if query succeeds
-      dbRecordingsMap = new Map(
-        dbRecordings.map(record => [record.filename, record])
-      );
-    } catch (dbError) {
-      console.warn('Database query failed, using filesystem data only:', dbError);
-      // Continue with empty database map
-    }
+    const dbRecordingsMap = new Map(
+      dbRecordings.map(record => [record.filename, record])
+    );
 
-    // Combine filesystem and database data
-    const recordings = audioFiles.map(filename => {
+    return audioFiles.map(filename => {
       const dbRecord = dbRecordingsMap.get(filename);
-      
-      // If no database record exists, create one
       if (!dbRecord) {
-        const newRecording = {
+        return {
           id: filename,
           filename,
           filepath: `${FileSystem.documentDirectory}${filename}`,
           duration: 0,
           created_at: new Date().toISOString(),
           is_starred: false,
-          starred_at: null,
           transcription: null
         };
-
-        // Try to save the new recording to database
-        try {
-          saveRecording(
-            newRecording.id,
-            newRecording.filename,
-            newRecording.filepath,
-            newRecording.duration
-          );
-        } catch (saveError) {
-          console.warn('Failed to save recording to database:', saveError);
-        }
-
-        return newRecording;
       }
 
       return {
@@ -182,21 +150,10 @@ export const getRecordings = async () => {
         filename,
         filepath: `${FileSystem.documentDirectory}${filename}`,
         duration: dbRecord.duration || 0,
-        created_at: dbRecord.created_at || new Date().toISOString(),
-        is_starred: dbRecord.is_starred === 1,
-        starred_at: dbRecord.starred_at || null,
+        created_at: dbRecord.created_at,
+        is_starred: Boolean(dbRecord.is_starred),
         transcription: null
       };
-    });
-
-    // Sort recordings
-    return recordings.sort((a, b) => {
-      if (a.is_starred && !b.is_starred) return -1;
-      if (!a.is_starred && b.is_starred) return 1;
-      if (a.is_starred && b.is_starred && a.starred_at && b.starred_at) {
-        return new Date(b.starred_at).getTime() - new Date(a.starred_at).getTime();
-      }
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
   } catch (error) {
     console.error('Failed to load recordings:', error);
@@ -212,7 +169,6 @@ type Recording = {
   duration: number;
   created_at: string;
   is_starred: boolean;
-  starred_at: string | null;
   transcription: string | null;
 };
 
@@ -274,31 +230,24 @@ export const deleteEnhancedAudio = async (id: string): Promise<void> => {
   }
 };
 
-// Update starRecording to handle errors better
+// Simplify starRecording to just update is_starred
 export const starRecording = async (id: string, isStarred: boolean) => {
   try {
-    const starredAt = isStarred ? new Date().toISOString() : null;
+    console.log(`Starring recording ${id}, isStarred: ${isStarred}`);
+    
     await db.execAsync(`
-      INSERT OR REPLACE INTO recordings (
-        id, 
-        filename, 
-        filepath, 
-        duration, 
-        is_starred, 
-        starred_at,
-        created_at
-      ) 
-      SELECT 
-        id,
-        filename,
-        filepath,
-        duration,
-        ${isStarred ? 1 : 0},
-        ${starredAt ? `'${starredAt}'` : 'NULL'},
-        COALESCE(created_at, CURRENT_TIMESTAMP)
-      FROM recordings 
-      WHERE id = '${id}';
+      UPDATE recordings 
+      SET is_starred = ${isStarred ? 1 : 0}
+      WHERE filename = '${id}';
     `);
+
+    // Verify the update
+    const result = await db.execAsync(`
+      SELECT filename, is_starred FROM recordings 
+      WHERE filename = '${id}';
+    `);
+    console.log('Star update verification:', result);
+
   } catch (error) {
     console.error('Star recording error:', error);
     throw error;
@@ -307,18 +256,18 @@ export const starRecording = async (id: string, isStarred: boolean) => {
 
 export const renameRecording = async (id: string, newName: string) => {
   try {
-    // Get the old filepath using filename as id (since that's how we store it)
-    const result = (await db.execAsync(`
-      SELECT filepath FROM recordings WHERE filename = '${id}';
-    `) as unknown) as any[];
-    
-    if (!result?.[0]) throw new Error('Recording not found');
-    
-    const oldFilepath = result[0].filepath;
-    const extension = oldFilepath.split('.').pop(); // Get file extension
-    const timestamp = id.split('_').pop()?.split('.')[0]; // Get timestamp from old filename
-    const newFilename = `${newName}_${timestamp}.${extension}`;
+    // Keep the extension from the original filename
+    const extension = id.split('.').pop();
+    const newFilename = `${newName}.${extension}`;
     const newFilepath = `${FileSystem.documentDirectory}${newFilename}`;
+
+    // First check if the file exists
+    const oldFilepath = `${FileSystem.documentDirectory}${id}`;
+    const fileInfo = await FileSystem.getInfoAsync(oldFilepath);
+    
+    if (!fileInfo.exists) {
+      throw new Error('Original file not found');
+    }
 
     // Rename the actual file
     await FileSystem.moveAsync({
@@ -333,6 +282,8 @@ export const renameRecording = async (id: string, newName: string) => {
           filepath = '${newFilepath}'
       WHERE filename = '${id}';
     `);
+
+    return newFilename;
   } catch (error) {
     console.error('Rename error:', error);
     throw error;
