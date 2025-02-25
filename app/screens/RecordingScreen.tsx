@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { View, Button, StyleSheet, Text, TextInput, Modal, Alert } from 'react-native';
+import { View, Button, StyleSheet, Text, TextInput, Modal, Alert, TouchableOpacity } from 'react-native';
 import { Audio } from 'expo-av';
 import { AudioRecorder } from '../services/AudioRecorder';
 import * as FileSystem from 'expo-file-system';
 import TranscriptionView from '../components/TranscriptionView';
 import { saveRecording } from '../database/Database';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function RecordingScreen() {
   const [isRecording, setIsRecording] = useState(false);
@@ -14,6 +15,11 @@ export default function RecordingScreen() {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [recordingName, setRecordingName] = useState('');
   const [recordingDuration, setRecordingDuration] = useState<number>(0);
+  const [playbackStatus, setPlaybackStatus] = useState<{
+    isPlaying: boolean;
+    positionMillis: number;
+    durationMillis: number;
+  } | null>(null);
 
   const handleRecord = async () => {
     if (isRecording) {
@@ -47,13 +53,53 @@ export default function RecordingScreen() {
 
     try {
       if (sound) {
-        await sound.unloadAsync();
+        if (playbackStatus?.isPlaying) {
+          await sound.pauseAsync();
+          setPlaybackStatus(prev => prev ? { ...prev, isPlaying: false } : null);
+        } else {
+          if (playbackStatus?.positionMillis === playbackStatus?.durationMillis) {
+            await sound.setPositionAsync(0);
+          }
+          await sound.playAsync();
+          setPlaybackStatus(prev => prev ? { ...prev, isPlaying: true } : null);
+        }
+      } else {
+        const { sound: newSound } = await Audio.Sound.createAsync(
+          { uri: tempRecordingUri },
+          { shouldPlay: true }
+        );
+        
+        setSound(newSound);
+        
+        // Initialize status after creating sound
+        const status = await newSound.getStatusAsync();
+        if (status.isLoaded) {
+          setPlaybackStatus({
+            isPlaying: true,
+            positionMillis: 0,
+            durationMillis: status.durationMillis || 0
+          });
+        }
+
+        // Set up status updates
+        newSound.setOnPlaybackStatusUpdate((status) => {
+          if (status.isLoaded) {
+            setPlaybackStatus({
+              isPlaying: status.isPlaying,
+              positionMillis: status.positionMillis,
+              durationMillis: status.durationMillis || 0
+            });
+
+            if (status.didJustFinish) {
+              setPlaybackStatus(prev => prev ? {
+                ...prev,
+                isPlaying: false,
+                positionMillis: 0
+              } : null);
+            }
+          }
+        });
       }
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: tempRecordingUri }
-      );
-      setSound(newSound);
-      await newSound.playAsync();
     } catch (error) {
       console.error('Failed to play recording:', error);
     }
@@ -93,6 +139,12 @@ export default function RecordingScreen() {
     }
   };
 
+  const formatDuration = (millis: number) => {
+    const minutes = Math.floor(millis / 60000);
+    const seconds = ((millis % 60000) / 1000).toFixed(0);
+    return `${minutes}:${Number(seconds) < 10 ? '0' : ''}${seconds}`;
+  };
+
   useEffect(() => {
     return () => {
       if (sound) {
@@ -111,10 +163,21 @@ export default function RecordingScreen() {
       {tempRecordingUri && (
         <>
           <View style={styles.buttonContainer}>
-            <Button
-              title="Play Recording"
+            <TouchableOpacity 
+              style={styles.playButton}
               onPress={handlePlay}
-            />
+            >
+              <Ionicons 
+                name={playbackStatus?.isPlaying ? "pause" : "play"} 
+                size={24} 
+                color="#007AFF" 
+              />
+              {playbackStatus && (
+                <Text style={styles.durationText}>
+                  {formatDuration(playbackStatus.positionMillis)} / {formatDuration(playbackStatus.durationMillis)}
+                </Text>
+              )}
+            </TouchableOpacity>
             <Button
               title="Save Recording"
               onPress={() => setShowSaveModal(true)}
@@ -198,5 +261,17 @@ const styles = StyleSheet.create({
   modalButtons: {
     flexDirection: 'row',
     justifyContent: 'space-around',
+  },
+  playButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 10,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  durationText: {
+    marginLeft: 10,
+    color: '#666',
   },
 }); 

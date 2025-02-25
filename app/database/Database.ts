@@ -123,16 +123,30 @@ export const getRecordings = async () => {
     );
     
     const audioFiles = filePaths.filter(file => file.endsWith('.m4a'));
-    const dbRecordings = (await db.execAsync(`
+    const result = (await db.execAsync(`
       SELECT * FROM recordings;
     `) as unknown) as any[];
 
+    // More defensive handling of SQLite result
+    const dbRecordings = Array.isArray(result) && result.length > 0 
+      ? (result[0]?.rows?._array || [])
+      : [];
+
+    console.log('DB Recordings:', dbRecordings); // Debug log
+
+    type DBRecord = {
+      filename: string;
+      duration: number;
+      created_at: string;
+      is_starred: number;
+    };
+
     const dbRecordingsMap = new Map(
-      dbRecordings.map(record => [record.filename, record])
+      dbRecordings.map((record: DBRecord) => [record.filename, record])
     );
 
     return audioFiles.map(filename => {
-      const dbRecord = dbRecordingsMap.get(filename);
+      const dbRecord = dbRecordingsMap.get(filename) as DBRecord | undefined;
       if (!dbRecord) {
         return {
           id: filename,
