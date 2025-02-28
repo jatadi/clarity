@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity, Alert, ScrollView, Modal, TextInput } from 'react-native';
 import { Audio } from 'expo-av';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { getRecordings, deleteRecording, starRecording, renameRecording, getTranscriptionForRecording } from '../database/Database';
+import { GestureResponderEvent } from 'react-native';
 
 type Recording = {
   id: string;
@@ -33,6 +34,7 @@ export default function LibraryScreen() {
   const [newName, setNewName] = useState('');
   const [showTranscriptionModal, setShowTranscriptionModal] = useState(false);
   const [selectedTranscription, setSelectedTranscription] = useState<string | null>(null);
+  const [optionsPosition, setOptionsPosition] = useState<{ top: number; right: number } | null>(null);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -180,10 +182,15 @@ export default function LibraryScreen() {
   };
 
   const handleOptionsPress = (recording: Recording) => {
-    // If options are already shown for this recording, close them
     if (showOptions === recording.id) {
       setShowOptions(null);
+      setOptionsPosition(null);
     } else {
+      // Set position relative to the recording card
+      setOptionsPosition({
+        top: 50,  // Height of the recording header
+        right: 20,
+      });
       setShowOptions(recording.id);
     }
   };
@@ -248,21 +255,29 @@ export default function LibraryScreen() {
     const duration = audioDurations[recording.id] || 0;
 
     return (
-      <View style={styles.recordingItem} key={recording.id}>
+      <View 
+        style={[
+          styles.recordingCard,
+          showOptions === recording.id && styles.activeCard
+        ]} 
+        key={recording.id}
+      >
         <TouchableOpacity 
           style={styles.recordingHeader}
           onPress={() => setExpandedId(isExpanded ? null : recording.id)}
         >
           <View style={styles.titleRow}>
             <Text style={styles.filename}>
-              {recording.is_starred && '⭐ '}
               {recording.filename}
             </Text>
+            {recording.is_starred && (
+              <Ionicons name="star" size={20} color="#FACC15" />
+            )}
             <TouchableOpacity
               style={styles.optionsButton}
               onPress={() => handleOptionsPress(recording)}
             >
-              <Ionicons name="ellipsis-vertical" size={24} color="#666" />
+              <Ionicons name="ellipsis-vertical" size={24} color="#1E3A8A" />
             </TouchableOpacity>
           </View>
           
@@ -305,86 +320,55 @@ export default function LibraryScreen() {
           <View style={styles.optionsMenu}>
             <TouchableOpacity 
               style={styles.optionItem}
-              onPress={() => handleStar(recording)}
+              onPress={() => {
+                const recording = recordings.find(r => r.id === showOptions);
+                if (recording) handleStar(recording);
+              }}
             >
               <Ionicons 
-                name={recording.is_starred ? "star" : "star-outline"} 
+                name={recordings.find(r => r.id === showOptions)?.is_starred ? "star" : "star-outline"} 
                 size={20} 
                 color="#FFD700" 
               />
               <Text style={styles.optionText}>
-                {recording.is_starred ? 'Unstar' : 'Star'}
+                {recordings.find(r => r.id === showOptions)?.is_starred ? 'Unstar' : 'Star'}
               </Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.optionItem}
-              onPress={() => handleShowTranscription(recording)}
+              onPress={() => handleShowTranscription(recordings.find(r => r.id === showOptions) as Recording)}
             >
               <Ionicons name="document-text" size={20} color="#007AFF" />
               <Text style={styles.optionText}>Show Transcription</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.optionItem}
-              onPress={() => handleRename(recording)}
+              onPress={() => handleRename(recordings.find(r => r.id === showOptions) as Recording)}
             >
               <Ionicons name="pencil-outline" size={20} color="#007AFF" />
               <Text style={styles.optionText}>Rename</Text>
             </TouchableOpacity>
             <TouchableOpacity 
               style={styles.optionItem}
-              onPress={() => handleDelete(recording)}
+              onPress={() => handleDelete(recordings.find(r => r.id === showOptions) as Recording)}
             >
               <Ionicons name="trash-outline" size={20} color="red" />
               <Text style={styles.optionText}>Delete</Text>
             </TouchableOpacity>
           </View>
         )}
-
-        {/* Rename Modal */}
-        <Modal
-          visible={isRenaming}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setIsRenaming(false)}
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <Text style={styles.modalTitle}>Rename Recording</Text>
-              <TextInput
-                style={styles.input}
-                value={newName}
-                onChangeText={setNewName}
-                autoFocus
-              />
-              <View style={styles.modalButtons}>
-                <TouchableOpacity 
-                  onPress={() => setIsRenaming(false)}
-                  style={styles.modalButton}
-                >
-                  <Text style={styles.modalButtonText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  onPress={() => handleRenameSubmit(recording)}
-                  style={[styles.modalButton, styles.modalButtonPrimary]}
-                >
-                  <Text style={[styles.modalButtonText, styles.modalButtonTextPrimary]}>
-                    Rename
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </View>
-        </Modal>
       </View>
     );
   };
 
   return (
-    <ScrollView style={styles.container}>
-      {recordings.map(renderRecording)}
-      {recordings.length === 0 && (
-        <Text style={styles.emptyText}>No recordings yet</Text>
-      )}
+    <View style={styles.mainContainer}>
+      <ScrollView style={styles.container}>
+        {recordings.map(renderRecording)}
+        {recordings.length === 0 && (
+          <Text style={styles.emptyText}>No recordings yet</Text>
+        )}
+      </ScrollView>
 
       {/* Add transcription modal */}
       <Modal
@@ -413,36 +397,56 @@ export default function LibraryScreen() {
           </View>
         </View>
       </Modal>
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  mainContainer: {
+    flex: 1,
+    backgroundColor: '#F3F4F6',
+  },
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: '#F3F4F6',
+    padding: 12,
+    position: 'relative',
   },
-  recordingItem: {
-    borderBottomWidth: 1,
-    borderBottomColor: '#eee',
+  recordingCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 12,
+    marginBottom: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 3,
+    position: 'relative',
+  },
+  activeCard: {
+    zIndex: 2,
   },
   recordingHeader: {
-    padding: 15,
+    padding: 16,
   },
   titleRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginBottom: 4,
   },
   filename: {
     fontSize: 16,
-    fontWeight: '500',
+    fontWeight: '600',
+    color: '#1E3A8A',
+    marginLeft: 0,
     flex: 1,
   },
   date: {
-    fontSize: 12,
+    fontSize: 14,
     color: '#666',
-    marginTop: 4,
+    marginLeft: 0,
+    marginTop: 8,
   },
   expandedContent: {
     padding: 15,
@@ -455,10 +459,6 @@ const styles = StyleSheet.create({
   },
   playButton: {
     marginRight: 10,
-  },
-  duration: {
-    fontSize: 14,
-    color: '#666',
   },
   transcriptionContainer: {
     marginTop: 10,
@@ -487,8 +487,8 @@ const styles = StyleSheet.create({
   },
   optionsMenu: {
     position: 'absolute',
-    right: 10,
-    top: 40,
+    top: '55%',
+    right: 5,
     backgroundColor: 'white',
     borderRadius: 8,
     padding: 8,
@@ -497,7 +497,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
-    zIndex: 1000,
+    zIndex: 9999,
   },
   optionItem: {
     flexDirection: 'row',
@@ -559,5 +559,9 @@ const styles = StyleSheet.create({
     color: '#666',
     fontStyle: 'italic',
     textAlign: 'center',
+  },
+  duration: {
+    fontSize: 14,
+    color: '#666',
   },
 }); 

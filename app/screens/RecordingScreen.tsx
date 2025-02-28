@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Button, StyleSheet, Text, TextInput, Modal, Alert, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, Text, TextInput, Modal, Alert, TouchableOpacity, Animated, ScrollView } from 'react-native';
 import { Audio } from 'expo-av';
 import { AudioRecorder } from '../services/AudioRecorder';
 import * as FileSystem from 'expo-file-system';
@@ -22,6 +22,7 @@ export default function RecordingScreen() {
   } | null>(null);
 
   const transcriptionRef = useRef<{ getText: () => string | null }>(null);
+  const pulseAnim = useRef(new Animated.Value(1)).current;
 
   const handleRecord = async () => {
     if (isRecording) {
@@ -39,6 +40,10 @@ export default function RecordingScreen() {
         console.error('Failed to stop recording:', error);
       }
     } else {
+      if (sound) {
+        await sound.unloadAsync();
+        setSound(null);
+      }
       try {
         await audioRecorder.startRecording();
         setIsRecording(true);
@@ -156,42 +161,77 @@ export default function RecordingScreen() {
     };
   }, [sound]);
 
+  useEffect(() => {
+    if (isRecording) {
+      Animated.loop(
+        Animated.sequence([
+          Animated.timing(pulseAnim, {
+            toValue: 1.2,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+          Animated.timing(pulseAnim, {
+            toValue: 1,
+            duration: 1000,
+            useNativeDriver: true,
+          }),
+        ])
+      ).start();
+    } else {
+      pulseAnim.setValue(1);
+    }
+  }, [isRecording]);
+
   return (
-    <View style={styles.container}>
-      <Button
-        title={isRecording ? 'Stop Recording' : 'Start Recording'}
-        onPress={handleRecord}
-      />
+    <ScrollView contentContainerStyle={styles.container}>
+      {/*<Text style={styles.headerText}>Record Audio</Text>
+      <Text style={styles.instructionText}>
+        Tap the microphone to start recording
+      </Text>*/}
+
+      <Animated.View style={[styles.recordButtonContainer, {
+        transform: [{ scale: pulseAnim }]
+      }]}>
+        <TouchableOpacity
+          style={[
+            styles.recordButton,
+            isRecording && styles.recordingActive
+          ]}
+          onPress={handleRecord}
+        >
+          <Ionicons 
+            name={isRecording ? "stop" : "mic"} 
+            size={40} 
+            color="#FFFFFF" 
+          />
+        </TouchableOpacity>
+      </Animated.View>
       
       {tempRecordingUri && (
-        <>
-          <View style={styles.buttonContainer}>
-            <TouchableOpacity 
-              style={styles.playButton}
-              onPress={handlePlay}
-            >
-              <Ionicons 
-                name={playbackStatus?.isPlaying ? "pause" : "play"} 
-                size={24} 
-                color="#007AFF" 
-              />
-              {playbackStatus && (
-                <Text style={styles.durationText}>
-                  {formatDuration(playbackStatus.positionMillis)} / {formatDuration(playbackStatus.durationMillis)}
-                </Text>
-              )}
-            </TouchableOpacity>
-            <Button
-              title="Save Recording"
-              onPress={() => setShowSaveModal(true)}
+        <View style={styles.playbackContainer}>
+          <TouchableOpacity 
+            style={styles.playButton}
+            onPress={handlePlay}
+          >
+            <Ionicons 
+              name={playbackStatus?.isPlaying ? "pause" : "play"} 
+              size={24} 
+              color="#3B82F6" 
             />
-          </View>
-          
-          <TranscriptionView 
-            audioUri={tempRecordingUri} 
-            ref={transcriptionRef}
-          />
-        </>
+            {playbackStatus && (
+              <Text style={styles.durationText}>
+                {formatDuration(playbackStatus.positionMillis)} / {formatDuration(playbackStatus.durationMillis)}
+              </Text>
+            )}
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={() => setShowSaveModal(true)}
+          >
+            <Text style={styles.primaryButtonText}>Save Recording</Text>
+          </TouchableOpacity>
+        </View>
       )}
 
       <Modal
@@ -199,7 +239,7 @@ export default function RecordingScreen() {
         animationType="slide"
         transparent={true}
       >
-        <View style={styles.modalContainer}>
+        <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>Save Recording</Text>
             <TextInput
@@ -207,25 +247,37 @@ export default function RecordingScreen() {
               placeholder="Enter recording name"
               value={recordingName}
               onChangeText={setRecordingName}
+              placeholderTextColor="#666"
             />
             <View style={styles.modalButtons}>
-              <Button
-                title="Cancel"
+              <TouchableOpacity
+                style={styles.secondaryButton}
                 onPress={() => {
                   setShowSaveModal(false);
                   setRecordingName('');
                 }}
-              />
-              <Button
-                title="Save"
+              >
+                <Text style={styles.secondaryButtonText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.primaryButton, !recordingName && styles.disabledButton]}
                 onPress={handleSave}
                 disabled={!recordingName}
-              />
+              >
+                <Text style={styles.primaryButtonText}>Save</Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-    </View>
+
+      {tempRecordingUri && (
+        <TranscriptionView 
+          audioUri={tempRecordingUri} 
+          ref={transcriptionRef}
+        />
+      )}
+    </ScrollView>
   );
 }
 
@@ -234,50 +286,134 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 20,
     alignItems: 'center',
+    backgroundColor: '#FFFFFF',
   },
-  buttonContainer: {
-    marginTop: 20,
-    gap: 10,
-  },
-  modalContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    padding: 20,
-    borderRadius: 10,
-    width: '80%',
-  },
-  modalTitle: {
-    fontSize: 18,
+  headerText: {
+    fontSize: 28,
     fontWeight: 'bold',
-    marginBottom: 15,
+    color: '#1E3A8A',
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  instructionText: {
+    fontSize: 16,
+    color: '#666',
+    marginBottom: 30,
     textAlign: 'center',
   },
-  input: {
-    borderWidth: 1,
-    borderColor: '#ccc',
-    borderRadius: 5,
-    padding: 10,
-    marginBottom: 15,
+  recordButtonContainer: {
+    alignItems: 'center',
+    marginVertical: 40,
   },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
+  recordButton: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    backgroundColor: '#3B82F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    elevation: 8,
+  },
+  recordingActive: {
+    backgroundColor: '#1E3A8A',
+    transform: [{ scale: 1.05 }],
+  },
+  playbackContainer: {
+    width: '100%',
+    alignItems: 'center',
+    padding: 20,
+    gap: 15,
   },
   playButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 10,
-    backgroundColor: '#f0f0f0',
+    padding: 15,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    width: '100%',
+  },
+  primaryButton: {
+    backgroundColor: '#3B82F6',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
     borderRadius: 8,
-    marginBottom: 10,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+    width: '100%',
+    maxWidth: 200,
+  },
+  primaryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  secondaryButton: {
+    backgroundColor: 'transparent',
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#1E3A8A',
+  },
+  secondaryButtonText: {
+    color: '#1E3A8A',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  disabledButton: {
+    backgroundColor: '#CBD5E1',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 16,
+    padding: 24,
+    width: '90%',
+    maxWidth: 400,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1E3A8A',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  input: {
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 20,
+    fontSize: 16,
+    backgroundColor: '#F8FAFC',
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 12,
   },
   durationText: {
-    marginLeft: 10,
-    color: '#666',
+    marginLeft: 15,
+    color: '#1E3A8A',
+    fontSize: 16,
+    fontWeight: '500',
   },
 }); 
