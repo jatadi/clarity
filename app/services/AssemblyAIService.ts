@@ -149,20 +149,13 @@ export class AssemblyAIService {
       const response = await fetch(`${this.baseUrl}/transcript`, {
         method: 'POST',
         headers: {
-          'Authorization': this.apiKey,
+          'Authorization': `${this.apiKey}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           audio_url: audioUrl,
-          speaker_labels: true,
-          auto_highlights: true,
-          entity_detection: true,
-          auto_chapters: true,
-          diarization_parameters: {
-            maximum_speaker_count: 10,
-            minimum_speaker_duration: 2
-          },
           language_detection: true,
+          speaker_labels: true,
           format_text: false
         })
       });
