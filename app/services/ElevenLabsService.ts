@@ -2,11 +2,15 @@ import * as FileSystem from 'expo-file-system';
 
 export class ElevenLabsService {
   private apiKey = 'sk_f4ebe2c15acce02e6ac60a286eb991e83b100225ba302e6a';
-  private baseUrl = 'https://api.elevenlabs.io/v1/text-to-speech/21m00Tcm4TlvDq8ikWAM';
+  private femaleVoiceId = '21m00Tcm4TlvDq8ikWAM';
+  private maleVoiceId = 'iP95p4xoKVk53GoZ742B';
 
-  async synthesizeSpeech(text: string): Promise<string> {
+  async synthesizeSpeech(text: string, gender: 'male' | 'female' = 'female'): Promise<string> {
     try {
-      const response = await fetch(this.baseUrl, {
+      const voiceId = gender === 'male' ? this.maleVoiceId : this.femaleVoiceId;
+      const baseUrl = `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`;
+
+      const response = await fetch(baseUrl, {
         method: 'POST',
         headers: {
           'xi-api-key': this.apiKey,
@@ -54,7 +58,7 @@ export class ElevenLabsService {
 
   async getVoices(): Promise<Array<{ id: string, name: string }>> {
     try {
-      const response = await fetch(`${this.baseUrl}/voices`, {
+      const response = await fetch(`https://api.elevenlabs.io/v1/voices`, {
         headers: {
           'xi-api-key': this.apiKey
         }

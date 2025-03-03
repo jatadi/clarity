@@ -6,6 +6,7 @@ import { ElevenLabsService } from '../services/ElevenLabsService';
 import AudioPlayer from '../components/AudioPlayer';
 import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
+import { VoiceGenderService } from '../services/VoiceGenderService';
 
 type TranscriptionViewProps = {
   audioUri: string | null;
@@ -33,6 +34,8 @@ export default React.forwardRef((props: TranscriptionViewProps, ref) => {
   } | null>(null);
   const deeplService = new DeepLService();
   const elevenLabsService = new ElevenLabsService();
+  const [detectedGender, setDetectedGender] = useState<'male' | 'female' | null>(null);
+  const [voiceGenderService] = useState(new VoiceGenderService());
 
   React.useImperativeHandle(ref, () => ({
     getText: () => {
@@ -102,6 +105,17 @@ export default React.forwardRef((props: TranscriptionViewProps, ref) => {
     };
 
     transcribeAudio();
+  }, [props.audioUri]);
+
+  useEffect(() => {
+    if (props.audioUri) {
+      const detectGender = async () => {
+        if (!props.audioUri) return; // Extra type guard
+        const gender = await voiceGenderService.detectGender(props.audioUri);
+        setDetectedGender(gender);
+      };
+      detectGender();
+    }
   }, [props.audioUri]);
 
   const handleEnhanceAudio = async () => {
@@ -212,16 +226,21 @@ export default React.forwardRef((props: TranscriptionViewProps, ref) => {
         <Text style={styles.errorText}>{error}</Text>
       ) : transcription ? (
         <View>
-          {transcription.detectedLanguage && (
-            <View style={styles.languageInfo}>
-              <Text style={styles.languageText}>
+          <View style={styles.detectionInfo}>
+            {transcription.detectedLanguage && (
+              <Text style={styles.detectedText}>
                 Detected Language: {getLanguageName(transcription.detectedLanguage)}
                 {transcription.confidence && 
                   ` (${Math.round(transcription.confidence * 100)}% confidence)`
                 }
               </Text>
-            </View>
-          )}
+            )}
+            {detectedGender && (
+              <Text style={styles.detectedText}>
+                Detected Gender: {detectedGender.charAt(0).toUpperCase() + detectedGender.slice(1)}
+              </Text>
+            )}
+          </View>
           <Text style={styles.transcriptionText}>{transcription.text}</Text>
           
           {transcription.detectedLanguage !== 'en' && (
@@ -306,16 +325,16 @@ const styles = StyleSheet.create({
     color: 'red',
     textAlign: 'center',
   },
-  languageInfo: {
-    backgroundColor: '#e8e8e8',
-    padding: 8,
-    borderRadius: 5,
+  detectionInfo: {
     marginBottom: 10,
+    padding: 8,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 8,
   },
-  languageText: {
-    fontSize: 12,
-    color: '#666',
-    fontStyle: 'italic',
+  detectedText: {
+    fontSize: 14,
+    color: '#4B5563',
+    marginVertical: 2,
   },
   translationContainer: {
     marginTop: 20,

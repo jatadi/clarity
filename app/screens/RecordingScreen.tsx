@@ -6,6 +6,8 @@ import * as FileSystem from 'expo-file-system';
 import TranscriptionView from '../components/TranscriptionView';
 import { saveRecording } from '../database/Database';
 import { Ionicons } from '@expo/vector-icons';
+import { VoiceGenderService } from '../services/VoiceGenderService';
+import { ElevenLabsService } from '../services/ElevenLabsService';
 
 export default function RecordingScreen() {
   const [isRecording, setIsRecording] = useState(false);
@@ -23,6 +25,10 @@ export default function RecordingScreen() {
 
   const transcriptionRef = useRef<{ getText: () => string | null }>(null);
   const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  const [voiceGenderService] = useState(new VoiceGenderService());
+  const [elevenLabsService] = useState(new ElevenLabsService());
+  const [detectedGender, setDetectedGender] = useState<'male' | 'female' | null>(null);
 
   const handleRecord = async () => {
     if (isRecording) {
@@ -116,8 +122,13 @@ export default function RecordingScreen() {
     if (!tempRecordingUri || !recordingName) return;
 
     try {
+      // Detect gender from recording
+      const gender = await voiceGenderService.detectGender(tempRecordingUri);
+      setDetectedGender(gender);
+      console.log('Detected gender:', gender);
+
       const timestamp = new Date().toISOString().split('T')[0];
-      const filename = `${recordingName || 'Recording'}_${timestamp}.m4a`;
+      const filename = `${recordingName}_${timestamp}.m4a`;
       const newUri = `${FileSystem.documentDirectory}${filename}`;
 
       await FileSystem.copyAsync({
@@ -125,12 +136,19 @@ export default function RecordingScreen() {
         to: newUri
       });
 
-      // Get the transcription from the TranscriptionView component
       const currentTranscription = transcriptionRef.current?.getText();
-      console.log('Current transcription:', currentTranscription); // Debug log
+      
+      // Generate enhanced audio with matching gender
+      if (currentTranscription && gender) {
+        const enhancedAudioUri = await elevenLabsService.synthesizeSpeech(
+          currentTranscription,
+          gender
+        );
+        console.log('Enhanced audio created:', enhancedAudioUri);
+      }
 
       await saveRecording(
-        filename, // Using filename as ID
+        filename,
         filename,
         newUri,
         recordingDuration,
@@ -209,6 +227,18 @@ export default function RecordingScreen() {
       
       {tempRecordingUri && (
         <View style={styles.playbackContainer}>
+          {detectedGender && (
+            <View style={styles.genderIndicator}>
+              <Ionicons 
+                name={detectedGender === 'male' ? 'man' : 'woman'} 
+                size={24} 
+                color="#3B82F6" 
+              />
+              <Text style={styles.genderText}>
+                {detectedGender === 'male' ? 'Male' : 'Female'} voice detected
+              </Text>
+            </View>
+          )}
           <TouchableOpacity 
             style={styles.playButton}
             onPress={handlePlay}
@@ -413,6 +443,20 @@ const styles = StyleSheet.create({
   durationText: {
     marginLeft: 15,
     color: '#1E3A8A',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  genderIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EBF5FF',
+    padding: 8,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  genderText: {
+    marginLeft: 8,
+    color: '#3B82F6',
     fontSize: 16,
     fontWeight: '500',
   },
