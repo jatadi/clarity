@@ -183,127 +183,126 @@ export default function RecordingScreen() {
   }, [isRecording]);
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      {/*<Text style={styles.headerText}>Record Audio</Text>
-      <Text style={styles.instructionText}>
-        Tap the microphone to start recording
-      </Text>*/}
-
-      <Animated.View style={[styles.recordButtonContainer, {
-        transform: [{ scale: pulseAnim }]
-      }]}>
-        <TouchableOpacity
-          style={[
-            styles.recordButton,
-            isRecording && styles.recordingActive
-          ]}
-          onPress={handleRecord}
-        >
-          <Ionicons 
-            name={isRecording ? "stop" : "mic"} 
-            size={40} 
-            color="#FFFFFF" 
-          />
-        </TouchableOpacity>
-      </Animated.View>
-      
-      {tempRecordingUri && (
-        <View style={styles.playbackContainer}>
-          <TouchableOpacity 
-            style={styles.playButton}
-            onPress={handlePlay}
-          >
-            <Ionicons 
-              name={playbackStatus?.isPlaying ? "pause" : "play"} 
-              size={24} 
-              color="#3B82F6" 
-            />
-            {playbackStatus && (
-              <Text style={styles.durationText}>
-                {formatDuration(playbackStatus.positionMillis)} / {formatDuration(playbackStatus.durationMillis)}
-              </Text>
-            )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={() => setShowSaveModal(true)}
-          >
-            <Text style={styles.primaryButtonText}>Save Recording</Text>
-          </TouchableOpacity>
+    <ScrollView 
+      style={styles.scrollView}
+      contentContainerStyle={styles.contentContainer}
+      showsVerticalScrollIndicator={true}
+      bounces={true}
+    >
+      <View style={styles.container}>
+        <View style={styles.recordingContainer}>
+          <Animated.View style={[styles.recordButtonContainer, {
+            transform: [{ scale: pulseAnim }]
+          }]}>
+            <TouchableOpacity
+              style={[
+                styles.recordButton,
+                isRecording && styles.recordingActive
+              ]}
+              onPress={handleRecord}
+            >
+              <Ionicons 
+                name={isRecording ? "stop" : "mic"} 
+                size={40} 
+                color="#FFFFFF" 
+              />
+            </TouchableOpacity>
+          </Animated.View>
         </View>
-      )}
 
-      <Modal
-        visible={showSaveModal}
-        animationType="slide"
-        transparent={true}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Save Recording</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter recording name"
-              value={recordingName}
-              onChangeText={setRecordingName}
-              placeholderTextColor="#666"
-            />
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={styles.secondaryButton}
-                onPress={() => {
-                  setShowSaveModal(false);
-                  setRecordingName('');
-                }}
-              >
-                <Text style={styles.secondaryButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.primaryButton, !recordingName && styles.disabledButton]}
-                onPress={handleSave}
-                disabled={!recordingName}
-              >
-                <Text style={styles.primaryButtonText}>Save</Text>
-              </TouchableOpacity>
+        {tempRecordingUri && (
+          <View style={styles.playbackContainer}>
+            <TouchableOpacity 
+              style={styles.playButton}
+              onPress={handlePlay}
+            >
+              <Ionicons 
+                name={playbackStatus?.isPlaying ? "pause" : "play"} 
+                size={24} 
+                color="#3B82F6" 
+              />
+              {playbackStatus && (
+                <Text style={styles.durationText}>
+                  {formatDuration(playbackStatus.positionMillis)} / {formatDuration(playbackStatus.durationMillis)}
+                </Text>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.primaryButton}
+              onPress={() => setShowSaveModal(true)}
+            >
+              <Text style={styles.primaryButtonText}>Save Recording</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        <Modal
+          visible={showSaveModal}
+          animationType="slide"
+          transparent={true}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>Save Recording</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter recording name"
+                value={recordingName}
+                onChangeText={setRecordingName}
+                placeholderTextColor="#666"
+              />
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={styles.secondaryButton}
+                  onPress={() => {
+                    setShowSaveModal(false);
+                    setRecordingName('');
+                  }}
+                >
+                  <Text style={styles.secondaryButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.primaryButton, !recordingName && styles.disabledButton]}
+                  onPress={handleSave}
+                  disabled={!recordingName}
+                >
+                  <Text style={styles.primaryButtonText}>Save</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
-        </View>
-      </Modal>
+        </Modal>
 
-      {tempRecordingUri && (
-        <TranscriptionView 
-          audioUri={tempRecordingUri} 
-          ref={transcriptionRef}
-        />
-      )}
+        {tempRecordingUri && (
+          <TranscriptionView 
+            ref={transcriptionRef}
+            audioUri={tempRecordingUri} 
+          />
+        )}
+      </View>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  scrollView: {
     flex: 1,
+    backgroundColor: '#fff',
+  },
+  container: {
+    minHeight: '100%',
+  },
+  contentContainer: {
     padding: 20,
+    paddingBottom: 100, // More padding at bottom
+  },
+  recordingContainer: {
     alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-  },
-  headerText: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#1E3A8A',
-    marginTop: 20,
-    marginBottom: 10,
-  },
-  instructionText: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 30,
-    textAlign: 'center',
+    marginVertical: 40,
   },
   recordButtonContainer: {
     alignItems: 'center',
-    marginVertical: 40,
   },
   recordButton: {
     width: 100,
