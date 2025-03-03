@@ -15,11 +15,19 @@ type Utterance = {
   }[];
 };
 
+type Entity = {
+  text: string;
+  type: string;
+  start: number;
+  end: number;
+};
+
 type TranscriptionResponse = {
   text: string;
   language_code?: string;
   confidence?: number;
   utterances?: Utterance[];
+  entities?: Entity[];
   error?: string;
 };
 
@@ -147,6 +155,13 @@ export class AssemblyAIService {
         body: JSON.stringify({
           audio_url: audioUrl,
           speaker_labels: true,
+          auto_highlights: true,
+          entity_detection: true,
+          auto_chapters: true,
+          diarization_parameters: {
+            maximum_speaker_count: 10,
+            minimum_speaker_duration: 2
+          },
           language_detection: true,
           format_text: false
         })
@@ -182,9 +197,32 @@ export class AssemblyAIService {
 
       let formattedText = result.text;
       if (result.utterances && result.utterances.length > 0) {
+        const speakerNames = new Map<string, string>();
+        
+        result.utterances.forEach(utterance => {
+          const nameMatch = utterance.text.match(/(?:I am|My name is|I'm|This is) ([A-Z][a-z]+ ?(?:[A-Z][a-z]+)?)/i);
+          if (nameMatch && nameMatch[1]) {
+            speakerNames.set(utterance.speaker, nameMatch[1].trim());
+          } else if (result.entities) {
+            const nameEntity = result.entities.find(entity => 
+              entity.type === 'person' && 
+              utterance.text.includes(entity.text)
+            );
+            if (nameEntity) {
+              speakerNames.set(utterance.speaker, nameEntity.text);
+            }
+          }
+        });
+
         formattedText = result.utterances
-          .map(u => `Speaker ${u.speaker}: ${u.text.trim()}`)
+          .map(u => {
+            const speakerName = speakerNames.get(u.speaker);
+            const speakerLabel = speakerName || `Speaker ${u.speaker.charCodeAt(0) - 64}`;
+            return `${speakerLabel}: ${u.text.trim()}`;
+          })
           .join('\n');
+
+        console.log('Detected speaker names:', Object.fromEntries(speakerNames));
       }
 
       return {
