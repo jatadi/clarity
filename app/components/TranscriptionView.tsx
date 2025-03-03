@@ -7,6 +7,21 @@ import AudioPlayer from '../components/AudioPlayer';
 import { Audio } from 'expo-av';
 import { Ionicons } from '@expo/vector-icons';
 
+type Utterance = {
+  confidence: number;
+  end: number;
+  speaker: string;
+  start: number;
+  text: string;
+  words: {
+    text: string;
+    start: number;
+    end: number;
+    confidence: number;
+    speaker: string;
+  }[];
+};
+
 type TranscriptionViewProps = {
   audioUri: string | null;
 };
@@ -17,6 +32,8 @@ type TranscriptionResult = {
   confidence?: number;
   englishTranslation?: string;
   isTranslating?: boolean;
+  utterances?: Utterance[];
+  error?: string;
 };
 
 export default React.forwardRef((props: TranscriptionViewProps, ref) => {
@@ -190,6 +207,17 @@ export default React.forwardRef((props: TranscriptionViewProps, ref) => {
     return languages[code] || code;
   };
 
+  const getSpeakerColor = (speakerNumber: number): string => {
+    const colors = [
+      '#E5E7EB', // default gray
+      '#DBEAFE', // light blue
+      '#DCF7E3', // light green
+      '#FEE2E2', // light red
+      '#FEF3C7', // light yellow
+    ];
+    return colors[speakerNumber % colors.length];
+  };
+
   useEffect(() => {
     return () => {
       if (enhancedSound) {
@@ -208,21 +236,53 @@ export default React.forwardRef((props: TranscriptionViewProps, ref) => {
           <ActivityIndicator size="large" color="#007AFF" />
           <Text style={styles.loadingText}>Transcribing audio...</Text>
         </View>
-      ) : error ? (
-        <Text style={styles.errorText}>{error}</Text>
+      ) : transcription?.error ? (
+        <View style={styles.errorContainer}>
+          <Ionicons name="warning-outline" size={24} color="#666" />
+          <Text style={styles.errorText}>{transcription.error}</Text>
+        </View>
       ) : transcription ? (
         <View>
-          {transcription.detectedLanguage && (
-            <View style={styles.languageInfo}>
-              <Text style={styles.languageText}>
-                Detected Language: {getLanguageName(transcription.detectedLanguage)}
-                {transcription.confidence && 
-                  ` (${Math.round(transcription.confidence * 100)}% confidence)`
-                }
-              </Text>
+          <View style={styles.detectionInfo}>
+            {transcription.detectedLanguage && (
+              <View style={styles.languageInfo}>
+                <Text style={styles.languageText}>
+                  Detected Language: {getLanguageName(transcription.detectedLanguage)}
+                  {transcription.confidence && 
+                    ` (${Math.round(transcription.confidence * 100)}% confidence)`
+                  }
+                </Text>
+              </View>
+            )}
+          </View>
+          
+          {transcription.utterances ? (
+            <View style={styles.utterancesContainer}>
+              {transcription.utterances.map((utterance, index) => {
+                const speakerNumber = utterance.speaker.charCodeAt(0) - 64;
+                
+                return (
+                  <View key={index} style={styles.utteranceRow}>
+                    <View style={[
+                      styles.speakerBadge,
+                      { backgroundColor: getSpeakerColor(speakerNumber) }
+                    ]}>
+                      <Text style={styles.speakerText}>
+                        Speaker {speakerNumber}:
+                      </Text>
+                    </View>
+                    <Text style={styles.utteranceText}>
+                      {utterance.text.trim()}
+                    </Text>
+                  </View>
+                );
+              })}
             </View>
+          ) : (
+            <Text style={styles.transcriptionText}>
+              {transcription.text}
+            </Text>
           )}
-          <Text style={styles.transcriptionText}>{transcription.text}</Text>
           
           {transcription.detectedLanguage !== 'en' && (
             <View style={styles.translationContainer}>
@@ -303,8 +363,13 @@ const styles = StyleSheet.create({
     color: '#333',
   },
   errorText: {
-    color: 'red',
+    marginTop: 8,
+    color: '#666',
     textAlign: 'center',
+    fontSize: 14,
+  },
+  detectionInfo: {
+    marginBottom: 20,
   },
   languageInfo: {
     backgroundColor: '#e8e8e8',
@@ -357,5 +422,40 @@ const styles = StyleSheet.create({
   durationText: {
     marginLeft: 10,
     color: '#666',
+  },
+  utterancesContainer: {
+    marginTop: 10,
+  },
+  utteranceRow: {
+    flexDirection: 'row',
+    marginBottom: 16,
+    alignItems: 'flex-start',
+    paddingHorizontal: 10,
+  },
+  speakerBadge: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    marginRight: 12,
+    minWidth: 100,
+    alignItems: 'center',
+  },
+  speakerText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4B5563',
+  },
+  utteranceText: {
+    flex: 1,
+    fontSize: 15,
+    lineHeight: 24,
+    color: '#1F2937',
+    paddingTop: 4,
+  },
+  errorContainer: {
+    alignItems: 'center',
+    padding: 20,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 8,
   },
 }); 
