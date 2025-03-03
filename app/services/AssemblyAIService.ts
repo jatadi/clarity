@@ -37,9 +37,10 @@ export class AssemblyAIService {
     }
 
     try {
-      // Read file as binary data
+      console.log('Starting audio upload:', fileUri);
       const response = await fetch(fileUri);
       const blob = await response.blob();
+      console.log('Audio blob size:', blob.size);
 
       const uploadResponse = await fetch(`${this.baseUrl}/upload`, {
         method: 'POST',
@@ -50,14 +51,18 @@ export class AssemblyAIService {
         body: blob
       });
 
+      const responseText = await uploadResponse.text();
+      console.log('Upload response:', responseText);
+
       if (!uploadResponse.ok) {
-        throw new Error(`Upload failed with status ${uploadResponse.status}`);
+        throw new Error(`Upload failed: ${responseText}`);
       }
 
-      const data = await uploadResponse.json();
+      const data = JSON.parse(responseText);
+      console.log('Upload successful, URL:', data.upload_url);
       return data.upload_url;
     } catch (error) {
-      console.error('Upload error details:', error);
+      console.error('Upload error:', error);
       throw error;
     }
   }
@@ -132,7 +137,7 @@ export class AssemblyAIService {
     error?: string;
   }> {
     try {
-      console.log('Starting transcription with diarization...');
+      console.log('Starting transcription with diarization...', audioUrl);
       const response = await fetch(`${this.baseUrl}/transcript`, {
         method: 'POST',
         headers: {
@@ -142,39 +147,36 @@ export class AssemblyAIService {
         body: JSON.stringify({
           audio_url: audioUrl,
           speaker_labels: true,
-          speakers_expected: 2,
           language_detection: true,
           format_text: false
         })
       });
 
+      const responseText = await response.text();
+      console.log('Initial response:', responseText);
+
       if (!response.ok) {
+        console.error('Response not OK:', response.status, responseText);
         return {
           transcription: '',
           sourceLanguage: 'en',
           confidence: 0,
-          error: 'No spoken audio detected'
+          error: `Transcription failed: ${responseText}`
         };
       }
 
-      const data = await response.json();
-      const result = await this.pollTranscriptionResult(data.id);
+      const data = JSON.parse(responseText);
+      console.log('Starting transcription with ID:', data.id);
 
-      // Only log essential info
-      if (result.utterances) {
-        console.log('Detected speakers:', result.utterances.length);
-        console.log('Utterances:', result.utterances.map(u => ({
-          speaker: u.speaker,
-          text: u.text
-        })));
-      }
+      const result = await this.pollTranscriptionResult(data.id);
+      console.log('Got transcription result:', result);
 
       if (!result.text || result.text.trim() === '') {
         return {
           transcription: '',
           sourceLanguage: 'en',
           confidence: 0,
-          error: 'No spoken audio detected'
+          error: 'No transcription received'
         };
       }
 
@@ -192,12 +194,12 @@ export class AssemblyAIService {
         utterances: result.utterances
       };
     } catch (error) {
-      console.error('Transcription error:', error);
+      console.error('Full transcription error:', error);
       return {
         transcription: '',
         sourceLanguage: 'en',
         confidence: 0,
-        error: 'No spoken audio detected'
+        error: 'Transcription failed'
       };
     }
   }
